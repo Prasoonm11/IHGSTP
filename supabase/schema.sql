@@ -86,6 +86,23 @@ create table if not exists audit_logs (
   created_at timestamptz not null default now()
 );
 
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  type text not null check (type in (
+    'goal_submitted',
+    'goal_approved',
+    'goal_rejected',
+    'checkin_reminder',
+    'escalation',
+    'system'
+  )),
+  payload jsonb not null default '{}'::jsonb,
+  is_read boolean not null default false,
+  sent_at timestamptz default now(),
+  created_at timestamptz not null default now()
+);
+
 create or replace function set_updated_at()
 returns trigger as $$
 begin
@@ -125,6 +142,7 @@ alter table goals enable row level security;
 alter table goal_updates enable row level security;
 alter table checkin_comments enable row level security;
 alter table audit_logs enable row level security;
+alter table notifications enable row level security;
 
 -- =========================
 -- RLS Policies (conditional)
@@ -184,6 +202,7 @@ comment on column shared_goals.title is 'Title for the shared (department-level)
 comment on column shared_goals.description is 'Optional longer description or guidance for the shared KPI.';
 comment on column shared_goals.uom_type is 'Unit-of-measure for the shared KPI; same choices as individual goals.';
 comment on column shared_goals.target_value is 'Numeric target for the shared KPI (if applicable).';
+comment on column shared_goals.target_date is 'Target completion date for timeline shared KPIs; optional for numeric goals.';
 comment on column shared_goals.weightage is 'Suggested weight (%) for the shared KPI when pushed to individuals.';
 comment on column shared_goals.created_by is 'Profile id of the admin or user who created this shared KPI.';
 
@@ -402,6 +421,63 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='notifications' AND policyname='notifications_read_own_or_admin'
+  ) THEN
+    CREATE POLICY notifications_read_own_or_admin
+    ON public.notifications
+    FOR SELECT TO authenticated
+    USING (
+      auth.uid() = user_id OR EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = auth.uid() AND p.role = 'admin'
+      )
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='notifications' AND policyname='notifications_insert_admin'
+  ) THEN
+    CREATE POLICY notifications_insert_admin
+    ON public.notifications
+    FOR INSERT TO authenticated
+    WITH CHECK (
+      EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = auth.uid() AND p.role = 'admin'
+      )
+    );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='notifications' AND policyname='notifications_update_own_or_admin'
+  ) THEN
+    CREATE POLICY notifications_update_own_or_admin
+    ON public.notifications
+    FOR UPDATE TO authenticated
+    USING (
+      auth.uid() = user_id OR EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = auth.uid() AND p.role = 'admin'
+      )
+    )
+    WITH CHECK (
+      auth.uid() = user_id OR EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = auth.uid() AND p.role = 'admin'
+      )
+    );
+  END IF;
+END $$;
+
 -- =========================
 -- Seed data
 -- =========================
@@ -459,6 +535,7 @@ create table if not exists shared_goals (
   description text,
   uom_type text not null,
   target_value numeric,
+  target_date date,
   weightage numeric(5,2),
   read_only_fields text[] default array['title','target_value']::text[],
   created_by uuid references profiles(id),

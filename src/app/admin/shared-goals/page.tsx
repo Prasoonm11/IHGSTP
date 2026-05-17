@@ -4,24 +4,42 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import RoleLayout from '@/components/layout/role-layout'
 import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
-import type { SharedGoal, Department, Goal, Profile, UomType } from '@/lib/types'
+import type { Department, Goal, Profile, ThrustArea, UomType } from '@/lib/types'
 import { uomOptions } from '@/lib/constants'
 import { LoadingBar } from '@/components/ui/animations'
 
 const currentYear = new Date().getFullYear()
 
-interface SharedGoalWithDept extends SharedGoal {
+interface SharedGoalWithDept extends Goal {
   department?: Department
+}
+
+const DEPARTMENT_META_PREFIX = 'dept_id:'
+
+function encodeSharedGoalDescription(description: string, departmentId: string) {
+  return `${DEPARTMENT_META_PREFIX}${departmentId}\n${description}`
+}
+
+function decodeSharedGoalDepartmentId(description: string | null) {
+  if (!description?.startsWith(DEPARTMENT_META_PREFIX)) return null
+  const [meta] = description.split('\n', 1)
+  return meta.slice(DEPARTMENT_META_PREFIX.length) || null
+}
+
+function decodeSharedGoalDescription(description: string | null) {
+  if (!description?.startsWith(DEPARTMENT_META_PREFIX)) return description || ''
+  return description.split('\n').slice(1).join('\n')
 }
 
 export default function AdminSharedGoalsPage() {
   const { profile } = useAuth()
   const supabase = createClient()
 
-  const [sharedGoals, setSharedGoals] = useState<SharedGoal[]>([])
+  const [sharedGoals, setSharedGoals] = useState<Goal[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
+  const [thrustAreas, setThrustAreas] = useState<ThrustArea[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -32,6 +50,7 @@ export default function AdminSharedGoalsPage() {
     department_id: '',
     uom_type: 'numeric_min' as UomType,
     target_value: '',
+    target_date: '',
     weightage: '10',
   })
   const [error, setError] = useState('')
@@ -39,24 +58,28 @@ export default function AdminSharedGoalsPage() {
 
   const deptMap = useMemo(() => new Map(departments.map(d => [d.id, d])), [departments])
   const goalsByDept = useMemo(() => {
-    return sharedGoals.filter(sg => sg.department_id).map(sg => ({
+    return sharedGoals.map(sg => ({
       ...sg,
-      department: deptMap.get(sg.department_id!),
-    }))
+      description: decodeSharedGoalDescription(sg.description),
+      department: deptMap.get(decodeSharedGoalDepartmentId(sg.description) ?? ''),
+    })).filter(sg => Boolean(sg.department))
   }, [sharedGoals, deptMap])
+  const defaultThrustAreaId = useMemo(() => thrustAreas[0]?.id ?? '', [thrustAreas])
 
   const fetchData = useCallback(async () => {
-    const [sharedRes, deptRes, goalsRes, profilesRes] = await Promise.all([
-      supabase.from('shared_goals').select('*').order('created_at', { ascending: false }),
+    const [sharedRes, deptRes, goalsRes, profilesRes, thrustRes] = await Promise.all([
+      supabase.from('goals').select('*').eq('is_shared', true).eq('cycle_year', currentYear).order('created_at', { ascending: false }),
       supabase.from('departments').select('*').order('name'),
       supabase.from('goals').select('*').eq('cycle_year', currentYear),
       supabase.from('profiles').select('*'),
+      supabase.from('thrust_areas').select('*').order('name'),
     ])
 
-    setSharedGoals((sharedRes.data || []) as SharedGoal[])
+    setSharedGoals((sharedRes.data || []) as Goal[])
     setDepartments((deptRes.data || []) as Department[])
     setGoals((goalsRes.data || []) as Goal[])
     setProfiles((profilesRes.data || []) as Profile[])
+    setThrustAreas((thrustRes.data || []) as ThrustArea[])
     setLoading(false)
   }, [supabase])
 
@@ -70,15 +93,29 @@ export default function AdminSharedGoalsPage() {
     setError('')
 
     try {
-      const { error: insertError } = await supabase.from('shared_goals').insert({
+      if (formData.uom_type === 'timeline' && !formData.target_date) {
+        throw new Error('Please select a target date for timeline goals')
+      }
+      if (!defaultThrustAreaId) {
+        throw new Error('No thrust area is available to attach this shared goal')
+      }
+
+      const { error: insertError } = await supabase.from('goals').insert({
+        employee_id: profile.id,
+        thrust_area_id: defaultThrustAreaId,
         title: formData.title,
-        description: formData.description || null,
-        department_id: formData.department_id || null,
+        description: formData.department_id
+          ? encodeSharedGoalDescription(formData.description || '', formData.department_id)
+          : (formData.description || null),
+        target_date: formData.uom_type === 'timeline' ? formData.target_date || null : null,
         uom_type: formData.uom_type,
         target_value: formData.target_value ? Number(formData.target_value) : null,
         weightage: Number(formData.weightage),
-        read_only_fields: ['title', 'target_value'],
-        created_by: profile.id,
+        status: 'draft',
+        cycle_year: currentYear,
+        locked: false,
+        is_shared: true,
+        primary_goal_id: null,
       })
 
       if (insertError) throw insertError
@@ -91,6 +128,7 @@ export default function AdminSharedGoalsPage() {
         department_id: '',
         uom_type: 'numeric_min',
         target_value: '',
+        target_date: '',
         weightage: '10',
       })
       await fetchData()
@@ -102,14 +140,16 @@ export default function AdminSharedGoalsPage() {
     }
   }
 
-  const handlePushToEmployees = async (sharedGoal: SharedGoal) => {
-    if (!sharedGoal.department_id) {
+  const handlePushToEmployees = async (sharedGoal: Goal) => {
+    const departmentId = decodeSharedGoalDepartmentId(sharedGoal.description)
+
+    if (!departmentId) {
       alert('Please select a department first')
       return
     }
 
     const deptEmployees = profiles.filter(p =>
-      p.department_id === sharedGoal.department_id &&
+      p.department_id === departmentId &&
       p.role === 'employee'
     )
 
@@ -130,16 +170,21 @@ export default function AdminSharedGoalsPage() {
         if (existingGoal) {
           await supabase
             .from('goals')
-            .update({ weightage: sharedGoal.weightage })
+            .update({
+              weightage: sharedGoal.weightage,
+              target_value: sharedGoal.target_value,
+              target_date: sharedGoal.target_date,
+            })
             .eq('id', existingGoal.id)
         } else {
           await supabase.from('goals').insert({
             employee_id: emp.id,
-            thrust_area_id: '00000000-0000-0000-0000-000000000001',
+            thrust_area_id: sharedGoal.thrust_area_id,
             title: sharedGoal.title,
             description: sharedGoal.description,
             uom_type: sharedGoal.uom_type,
             target_value: sharedGoal.target_value,
+            target_date: sharedGoal.target_date,
             weightage: sharedGoal.weightage,
             status: 'submitted',
             cycle_year: currentYear,
@@ -164,7 +209,7 @@ export default function AdminSharedGoalsPage() {
     if (!confirm('Are you sure you want to delete this shared goal?')) return
 
     try {
-      const { error } = await supabase.from('shared_goals').delete().eq('id', id)
+      const { error } = await supabase.from('goals').delete().eq('id', id).eq('is_shared', true)
       if (!error) {
         setSuccess('Shared goal deleted')
         await fetchData()
@@ -220,8 +265,9 @@ export default function AdminSharedGoalsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {goalsByDept.map(sg => {
+              const departmentId = decodeSharedGoalDepartmentId(sg.description)
               const deptEmployees = profiles.filter(p =>
-                p.department_id === sg.department_id && p.role === 'employee'
+                p.department_id === departmentId && p.role === 'employee'
               ).length
 
               return (
@@ -241,14 +287,18 @@ export default function AdminSharedGoalsPage() {
                     </button>
                   </div>
 
-                  {sg.description && (
-                    <p className="text-sm text-slate-400 mb-4">{sg.description}</p>
+                  {decodeSharedGoalDescription(sg.description) && (
+                    <p className="text-sm text-slate-400 mb-4">{decodeSharedGoalDescription(sg.description)}</p>
                   )}
 
                   <div className="grid grid-cols-3 gap-4 mb-4">
                     <div className="p-3 bg-[#081225] rounded-lg text-center">
-                      <p className="text-lg font-bold text-white">{sg.target_value ?? '-'}</p>
-                      <p className="text-xs text-slate-500">Target</p>
+                      <p className="text-lg font-bold text-white">
+                        {sg.uom_type === 'timeline'
+                          ? (sg.target_date ? new Date(sg.target_date).toLocaleDateString() : '-')
+                          : (sg.target_value ?? '-')}
+                      </p>
+                      <p className="text-xs text-slate-500">{sg.uom_type === 'timeline' ? 'Target Date' : 'Target'}</p>
                     </div>
                     <div className="p-3 bg-[#081225] rounded-lg text-center">
                       <p className="text-lg font-bold text-white">{sg.weightage}%</p>
@@ -262,7 +312,7 @@ export default function AdminSharedGoalsPage() {
 
                   <button
                     onClick={() => handlePushToEmployees(sg)}
-                    disabled={saving || !sg.department_id}
+                    disabled={saving || !departmentId}
                     className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
                   >
                     {saving ? 'Pushing...' : 'Push to Employees'}
@@ -305,44 +355,56 @@ export default function AdminSharedGoalsPage() {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Department</label>
-                  <select
-                    value={formData.department_id}
-                    onChange={e => setFormData({ ...formData, department_id: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                  >
-                    <option value="">All Departments</option>
-                    {departments.map(d => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Unit of Measure</label>
-                  <select
-                    value={formData.uom_type}
-                    onChange={e => setFormData({ ...formData, uom_type: e.target.value as UomType })}
-                    className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                  >
-                    {uomOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">Target Value</label>
-                    <input
-                      type="number"
-                      value={formData.target_value}
-                      onChange={e => setFormData({ ...formData, target_value: e.target.value })}
+                    <label className="block text-sm text-slate-400 mb-1">Department</label>
+                    <select
+                      value={formData.department_id}
+                      onChange={e => setFormData({ ...formData, department_id: e.target.value })}
                       className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                      placeholder="e.g., 95"
+                    >
+                      <option value="">All Departments</option>
+                      {departments.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">Unit of Measure</label>
+                    <select
+                      value={formData.uom_type}
+                      onChange={e => setFormData({
+                        ...formData,
+                        uom_type: e.target.value as UomType,
+                        target_value: e.target.value === 'timeline' ? '' : formData.target_value,
+                        target_date: e.target.value === 'timeline' ? formData.target_date : '',
+                      })}
+                      className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
+                    >
+                      {uomOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1">
+                      {formData.uom_type === 'timeline' ? 'Target Date' : 'Target Value'}
+                    </label>
+                    <input
+                      type={formData.uom_type === 'timeline' ? 'date' : 'number'}
+                      value={formData.uom_type === 'timeline' ? formData.target_date : formData.target_value}
+                      onChange={e => setFormData({
+                        ...formData,
+                        target_date: formData.uom_type === 'timeline' ? e.target.value : '',
+                        target_value: formData.uom_type === 'timeline' ? '' : e.target.value,
+                      })}
+                      className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
+                      placeholder={formData.uom_type === 'timeline' ? 'Select a date' : 'e.g., 95'}
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm text-slate-400 mb-1">Weightage (%)</label>
                     <input

@@ -192,6 +192,7 @@ export default function AuthPage() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [managers, setManagers] = useState<{ id: string; name: string }[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const [oauthSubmitting, setOauthSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -252,6 +253,11 @@ export default function AuthPage() {
     }
 
     router.replace('/dashboard')
+  }
+
+  const handleMicrosoftLogin = async () => {
+    resetFeedback()
+    router.push('/microsoft')
   }
 
   const handleRegister = async (event: React.FormEvent) => {
@@ -435,6 +441,8 @@ export default function AuthPage() {
                 resetEmail={resetEmail}
                 setResetEmail={setResetEmail}
                 onPasswordReset={handlePasswordReset}
+                onMicrosoftLogin={handleMicrosoftLogin}
+                oauthSubmitting={oauthSubmitting}
               />
             </motion.section>
           </motion.div>
@@ -463,6 +471,8 @@ function AuthPanel({
   resetEmail,
   setResetEmail,
   onPasswordReset,
+  onMicrosoftLogin,
+  oauthSubmitting,
 }: {
   mode: AuthMode
   formData: FormData
@@ -482,6 +492,8 @@ function AuthPanel({
   resetEmail: string
   setResetEmail: (value: string) => void
   onPasswordReset: (event: React.FormEvent) => Promise<void>
+  onMicrosoftLogin: () => Promise<void>
+  oauthSubmitting: boolean
 }) {
   const isLogin = mode === 'login'
 
@@ -601,6 +613,35 @@ function AuthPanel({
         </form>
       ) : (
         <form onSubmit={isLogin ? onSubmit : onRegister} className="space-y-3 sm:space-y-4">
+          {isLogin ? (
+            <motion.button
+              type="button"
+              onClick={onMicrosoftLogin}
+              disabled={submitting || oauthSubmitting}
+              whileHover={{ scale: submitting || oauthSubmitting ? 1 : 1.015 }}
+              whileTap={{ scale: submitting || oauthSubmitting ? 1 : 0.99 }}
+              className="group flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white/6 px-5 py-4 text-sm font-semibold text-white transition-all hover:border-white/18 hover:bg-white/9 hover:shadow-[0_18px_55px_rgba(0,0,0,0.25)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className="flex h-5 w-5 items-center justify-center rounded bg-white p-0.5">
+                <span className="grid h-full w-full grid-cols-2 grid-rows-2 gap-0.5">
+                  <span className="bg-[#f35325]" />
+                  <span className="bg-[#81bc06]" />
+                  <span className="bg-[#05a6f0]" />
+                  <span className="bg-[#ffba08]" />
+                </span>
+              </span>
+              {oauthSubmitting ? 'Connecting to Microsoft...' : 'Continue with Microsoft'}
+            </motion.button>
+          ) : null}
+
+          {isLogin ? (
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-white/10" />
+              <span className="text-[0.65rem] font-semibold uppercase tracking-[0.28em] text-white/35">or</span>
+              <div className="h-px flex-1 bg-white/10" />
+            </div>
+          ) : null}
+
         <AnimatePresence initial={false} mode="popLayout">
           {!isLogin ? (
             <motion.div

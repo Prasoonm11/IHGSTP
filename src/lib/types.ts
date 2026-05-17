@@ -85,6 +85,7 @@ export interface SharedGoal {
   description: string | null
   uom_type: UomType
   target_value: number | null
+  target_date: string | null
   weightage: number
   read_only_fields: string[]
   created_by: string | null

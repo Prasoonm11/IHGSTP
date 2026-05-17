@@ -3,11 +3,17 @@
 import { useAuth } from '@/components/auth-provider'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Notification } from '@/lib/types'
 import { LoadingBar } from '@/components/ui/animations'
 import Image from 'next/image'
+
+const AVATAR_BUCKET = process.env.NEXT_PUBLIC_PROFILE_AVATAR_BUCKET || 'profile-pictures'
+
+function getAvatarStoragePath(userId: string) {
+  return `avatars/${userId}/avatar`
+}
 
 const roleNavItems = {
   employee: [
@@ -37,8 +43,17 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
+  const profileMenuRef = useRef<HTMLDivElement | null>(null)
+  const avatarInputRef = useRef<HTMLInputElement | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [showNotifications, setShowNotifications] = useState(false)
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showProfileDetails, setShowProfileDetails] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [departmentName, setDepartmentName] = useState('')
+  const [profileMessage, setProfileMessage] = useState('')
+  const [savingAvatar, setSavingAvatar] = useState(false)
+  const [resettingPassword, setResettingPassword] = useState(false)
 
   useEffect(() => {
     if (!loading && !profile) {
@@ -63,9 +78,135 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
     }
   }, [profile, loadNotifications])
 
+  useEffect(() => {
+    if (!profile) return
+
+    const storedAvatar = window.localStorage.getItem(`profile-avatar:${profile.id}`)
+    if (storedAvatar) {
+      setAvatarUrl(storedAvatar)
+      return
+    }
+
+    const { data } = supabase.storage
+      .from(AVATAR_BUCKET)
+      .getPublicUrl(getAvatarStoragePath(profile.id))
+
+    setAvatarUrl(data.publicUrl)
+  }, [profile])
+
+  useEffect(() => {
+    if (!profile?.department_id) {
+      setDepartmentName('')
+      return
+    }
+
+    const loadDepartment = async () => {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('name')
+        .eq('id', profile.department_id)
+        .single()
+
+      if (!error && data) {
+        setDepartmentName(data.name)
+      }
+    }
+
+    void loadDepartment()
+  }, [profile?.department_id, supabase])
+
+  useEffect(() => {
+    const onDocumentClick = (event: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setShowProfileMenu(false)
+        setShowProfileDetails(false)
+      }
+    }
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowProfileMenu(false)
+        setShowProfileDetails(false)
+      }
+    }
+
+    document.addEventListener('mousedown', onDocumentClick)
+    document.addEventListener('keydown', onEscape)
+
+    return () => {
+      document.removeEventListener('mousedown', onDocumentClick)
+      document.removeEventListener('keydown', onEscape)
+    }
+  }, [])
+
   const markAsRead = async (id: string) => {
     await supabase.from('notifications').update({ is_read: true }).eq('id', id)
     setNotifications(notifications.filter(n => n.id !== id))
+  }
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !profile) return
+
+    if (!file.type.startsWith('image/')) {
+      setProfileMessage('Please choose an image file.')
+      return
+    }
+
+    setSavingAvatar(true)
+    setProfileMessage('')
+
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
+
+    if (!accessToken) {
+      setProfileMessage('Please sign in again and try.')
+      setSavingAvatar(false)
+      return
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch('/api/profile/avatar', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: formData,
+    })
+
+    const result = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      setProfileMessage(result?.error || 'Unable to save profile photo.')
+      setSavingAvatar(false)
+      return
+    }
+
+    const publicUrl = `${result.publicUrl}?v=${Date.now()}`
+    window.localStorage.setItem(`profile-avatar:${profile.id}`, publicUrl)
+    setAvatarUrl(publicUrl)
+    setProfileMessage('Profile photo saved to Supabase Storage.')
+    setSavingAvatar(false)
+  }
+
+  const handleResetPassword = async () => {
+    if (!profile) return
+    setResettingPassword(true)
+    setProfileMessage('')
+
+    const { error } = await supabase.auth.resetPasswordForEmail(profile.email, {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    })
+
+    if (error) {
+      setProfileMessage(error.message)
+    } else {
+      setProfileMessage('Password reset link sent to your email.')
+    }
+
+    setResettingPassword(false)
   }
 
   const navItems = roleNavItems[profile?.role as keyof typeof roleNavItems] || []
@@ -143,8 +284,100 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
           </div>
 
           {/* Profile Avatar */}
-          <div className="w-9 h-9 rounded-full bg-linear-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer hover:shadow-lg transition-all">
-            {profile.first_name[0]}{profile.last_name[0]}
+          <div className="relative" ref={profileMenuRef}>
+            <button
+              onClick={() => {
+                setShowProfileMenu(!showProfileMenu)
+                setShowNotifications(false)
+              }}
+              className="w-9 h-9 rounded-full bg-linear-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white text-sm font-medium cursor-pointer hover:shadow-lg transition-all overflow-hidden"
+              aria-label="Profile menu"
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Profile photo" className="h-full w-full object-cover" />
+              ) : (
+                <>
+                  {profile.first_name[0]}{profile.last_name[0]}
+                </>
+              )}
+            </button>
+
+            {showProfileMenu && (
+              <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-white/10 bg-black/75 backdrop-blur-xl shadow-2xl overflow-hidden z-50">
+                <div className="p-4 border-b border-white/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full bg-linear-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-semibold overflow-hidden shrink-0">
+                      {avatarUrl ? (
+                        <img src={avatarUrl} alt="Profile photo" className="h-full w-full object-cover" />
+                      ) : (
+                        <span>{profile.first_name[0]}{profile.last_name[0]}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-white font-medium truncate">{profile.first_name} {profile.last_name}</p>
+                      <p className="text-xs text-violet-300/60 truncate">{profile.email}</p>
+                    </div>
+                  </div>
+                  {profileMessage && (
+                    <p className="mt-3 text-xs text-cyan-300">{profileMessage}</p>
+                  )}
+                </div>
+
+                <div className="p-2 space-y-1">
+                  <button
+                    onClick={() => setShowProfileDetails(prev => !prev)}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:bg-white/5 hover:text-white transition-colors"
+                  >
+                    View details
+                  </button>
+                  <button
+                    onClick={() => avatarInputRef.current?.click()}
+                    disabled={savingAvatar}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:bg-white/5 hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {savingAvatar ? 'Saving photo...' : 'Add PFP'}
+                  </button>
+                  <button
+                    onClick={handleResetPassword}
+                    disabled={resettingPassword}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:bg-white/5 hover:text-white transition-colors disabled:opacity-50"
+                  >
+                    {resettingPassword ? 'Sending reset link...' : 'Reset password'}
+                  </button>
+                  <button
+                    onClick={signOut}
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm text-rose-300 hover:bg-rose-500/10 hover:text-rose-200 transition-colors"
+                  >
+                    Sign out
+                  </button>
+                </div>
+
+                {showProfileDetails && (
+                  <div className="border-t border-white/10 p-4 text-sm text-white/75 space-y-2">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-white/45">Role</span>
+                      <span className="capitalize">{profile.role}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-white/45">Department</span>
+                      <span className="truncate">{departmentName || 'Not set'}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-white/45">User ID</span>
+                      <span className="truncate font-mono text-xs">{profile.id.slice(0, 8)}...</span>
+                    </div>
+                    <p className="text-xs text-white/40 pt-1">Profile photo is stored in Supabase Storage.</p>
+                  </div>
+                )}
+              </div>
+            )}
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarUpload}
+            />
           </div>
         </div>
       </nav>

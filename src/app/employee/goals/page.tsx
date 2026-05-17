@@ -32,6 +32,18 @@ const emptyForm: GoalFormData = {
   weightage: '10',
 }
 
+const DEPARTMENT_META_PREFIX = 'dept_id:'
+
+function decodeSharedGoalDepartmentId(description: string | null) {
+  if (!description?.startsWith(DEPARTMENT_META_PREFIX)) return null
+  return description.slice(DEPARTMENT_META_PREFIX.length).split('\n', 1)[0] || null
+}
+
+function decodeSharedGoalDescription(description: string | null) {
+  if (!description?.startsWith(DEPARTMENT_META_PREFIX)) return description || ''
+  return description.split('\n').slice(1).join('\n')
+}
+
 function AnimatedInput({
   label,
   value,
@@ -101,11 +113,13 @@ function AnimatedInput({
 function GoalCard({
   goal,
   thrustAreaName,
+  sharedBadge,
   onEdit,
   onDelete,
 }: {
   goal: GoalWithUpdates
   thrustAreaName: string
+  sharedBadge?: boolean
   onEdit?: () => void
   onDelete?: () => void
 }) {
@@ -117,6 +131,7 @@ function GoalCard({
           <p className="text-white/50 text-xs mt-1">{thrustAreaName}</p>
           <div className="flex items-center gap-2 mt-2">
             <span className="text-white/60 text-xs bg-white/10 px-2 py-1 rounded">{goal.weightage}%</span>
+            {sharedBadge || goal.is_shared ? <span className="text-cyan-300 text-xs bg-cyan-500/10 px-2 py-1 rounded">Shared</span> : null}
             {goal.locked && <span className="text-yellow-400 text-xs">🔒</span>}
           </div>
         </div>
@@ -147,6 +162,15 @@ export default function EmployeeGoalsPage() {
   const [success, setSuccess] = useState('')
 
   const myGoals = useMemo(() => goals.filter(g => g.employee_id === profile?.id), [goals, profile])
+  const sharedGoals = useMemo(() => myGoals.filter(g => g.is_shared), [myGoals])
+  const departmentSharedTemplates = useMemo(() => {
+    if (!profile?.department_id) return []
+    return goals.filter(g =>
+      g.is_shared &&
+      g.primary_goal_id === null &&
+      decodeSharedGoalDepartmentId(g.description) === profile.department_id
+    )
+  }, [goals, profile?.department_id])
   const draftGoals = useMemo(() => myGoals.filter(g => g.status === 'draft'), [myGoals])
   const submittedGoals = useMemo(() => myGoals.filter(g => g.status === 'submitted'), [myGoals])
   const approvedGoals = useMemo(() => myGoals.filter(g => g.status === 'approved'), [myGoals])
@@ -366,8 +390,8 @@ export default function EmployeeGoalsPage() {
         </div>
 
         {/* Quick Action Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+        <div className="space-y-4">
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 flex flex-col">
             <h3 className="text-white font-semibold mb-4">Quick Action</h3>
             <button onClick={() => { setForm(emptyForm); setEditingId(null); setShowForm(true) }} className="w-full py-3 rounded-lg bg-linear-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:shadow-lg transition-all">
               + Add new goal
@@ -393,6 +417,48 @@ export default function EmployeeGoalsPage() {
               </p>
             )}
           </div>
+
+          {/* Shared Goals */}
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 min-h-[320px] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-white font-semibold">Shared KPIs</h3>
+                <p className="text-white/50 text-sm mt-1">Department goals pushed by admins and visible to you</p>
+              </div>
+              <span className="text-xs text-cyan-300 bg-cyan-500/10 px-2 py-1 rounded">
+                {sharedGoals.length} active
+              </span>
+            </div>
+
+            <div className="flex-1">
+              {departmentSharedTemplates.length === 0 ? (
+                <p className="text-white/40 text-sm">No shared KPIs available for your department yet.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  {departmentSharedTemplates.map(goal => (
+                    <GoalCard
+                      key={goal.id}
+                      goal={goal}
+                      thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''}
+                      sharedBadge
+                    />
+                  ))}
+                </div>
+              )}
+              {departmentSharedTemplates.some(goal => decodeSharedGoalDescription(goal.description)) ? (
+                <div className="mt-4 space-y-2">
+                  {departmentSharedTemplates.map(goal => {
+                    const description = decodeSharedGoalDescription(goal.description)
+                    return description ? (
+                      <p key={goal.id} className="text-xs text-white/45">
+                        {goal.title}: {description}
+                      </p>
+                    ) : null
+                  })}
+                </div>
+              ) : null}
+            </div>
+          </div>
         </div>
 
         {/* Goal Sections */}
@@ -400,21 +466,21 @@ export default function EmployeeGoalsPage() {
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
             <h3 className="text-white font-semibold mb-4 flex items-center gap-2">✏️ Draft Goals ({draftGoals.length})</h3>
             <div className="space-y-3 max-h-96 overflow-y-auto">
-              {draftGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No draft goals</p> : draftGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} onEdit={() => handleEdit(goal)} onDelete={() => handleDelete(goal.id)} />)}
+              {draftGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No draft goals</p> : draftGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} sharedBadge={goal.is_shared} onEdit={() => handleEdit(goal)} onDelete={() => handleDelete(goal.id)} />)}
             </div>
           </div>
 
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
             <h3 className="text-white font-semibold mb-4 flex items-center gap-2">📋 Submitted ({submittedGoals.length})</h3>
             <div className="space-y-3 max-h-96 overflow-y-auto">
-              {submittedGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No submitted</p> : submittedGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} />)}
+              {submittedGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No submitted</p> : submittedGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} sharedBadge={goal.is_shared} />)}
             </div>
           </div>
 
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
             <h3 className="text-white font-semibold mb-4 flex items-center gap-2">✅ Approved ({approvedGoals.length})</h3>
             <div className="space-y-3 max-h-96 overflow-y-auto">
-              {approvedGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No approved</p> : approvedGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} />)}
+              {approvedGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No approved</p> : approvedGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} sharedBadge={goal.is_shared} />)}
             </div>
           </div>
         </div>

@@ -19,7 +19,7 @@ export default function AdminNotificationsPage() {
   const [selectedUser, setSelectedUser] = useState<string>('all')
   const [showModal, setShowModal] = useState(false)
   const [formData, setFormData] = useState({
-    user_id: '',
+    user_id: 'all',
     type: 'system' as string,
     message: '',
   })
@@ -42,22 +42,28 @@ export default function AdminNotificationsPage() {
   }, [notifications])
 
   const fetchData = useCallback(async () => {
-    const [notifRes, profilesRes] = await Promise.all([
-      supabase
-        .from('notifications')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(200),
-      supabase.from('profiles').select('*'),
-    ])
+    try {
+      const [notifRes, profilesRes] = await Promise.all([
+        supabase
+          .from('notifications')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200),
+        supabase.from('profiles').select('*'),
+      ])
 
-    setNotifications((notifRes.data || []) as Notification[])
-    setProfiles((profilesRes.data || []) as Profile[])
-    setLoading(false)
+      if (notifRes.error) throw new Error(notifRes.error.message)
+      if (profilesRes.error) throw new Error(profilesRes.error.message)
+
+      setNotifications((notifRes.data || []) as Notification[])
+      setProfiles((profilesRes.data || []) as Profile[])
+    } finally {
+      setLoading(false)
+    }
   }, [supabase])
 
   useEffect(() => {
-    fetchData()
+    void fetchData()
   }, [fetchData])
 
   const handleCreateNotification = async () => {
@@ -67,39 +73,54 @@ export default function AdminNotificationsPage() {
     try {
       if (formData.user_id === 'all') {
         const allEmployees = profiles.filter(p => p.role === 'employee')
-        for (const emp of allEmployees) {
-          await supabase.from('notifications').insert({
-            user_id: emp.id,
-            type: formData.type,
-            payload: { message: formData.message },
-          })
+        const results = await Promise.all(
+          allEmployees.map(emp =>
+            supabase.from('notifications').insert({
+              user_id: emp.id,
+              type: formData.type,
+              payload: { message: formData.message },
+            })
+          )
+        )
+        const firstError = results.find(result => result.error)
+        if (firstError?.error) {
+          throw new Error(firstError.error.message)
         }
       } else {
-        await supabase.from('notifications').insert({
+        const { error } = await supabase.from('notifications').insert({
           user_id: formData.user_id,
           type: formData.type,
           payload: { message: formData.message },
         })
+        if (error) throw new Error(error.message)
       }
 
       setShowModal(false)
-      setFormData({ user_id: '', type: 'system', message: '' })
+      setFormData({ user_id: 'all', type: 'system', message: '' })
       await fetchData()
       alert('Notification sent!')
     } catch (err) {
-      alert('Failed to send notification')
+      alert(err instanceof Error ? err.message : 'Failed to send notification')
     } finally {
       setSaving(false)
     }
   }
 
   const handleMarkAsRead = async (id: string) => {
-    await supabase.from('notifications').update({ is_read: true }).eq('id', id)
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id)
+    if (error) {
+      alert(error.message)
+      return
+    }
     setNotifications(notifications.map(n => n.id === id ? { ...n, is_read: true } : n))
   }
 
   const handleMarkAllAsRead = async () => {
-    await supabase.from('notifications').update({ is_read: true }).eq('is_read', false)
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('is_read', false)
+    if (error) {
+      alert(error.message)
+      return
+    }
     setNotifications(notifications.map(n => ({ ...n, is_read: true })))
   }
 
@@ -248,7 +269,7 @@ export default function AdminNotificationsPage() {
                     onChange={e => setFormData({ ...formData, user_id: e.target.value })}
                     className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
                   >
-                    <option value="">All Employees</option>
+                    <option value="all">All Employees</option>
                     {profiles.map(p => (
                       <option key={p.id} value={p.id}>
                         {p.first_name} {p.last_name} ({p.role})
