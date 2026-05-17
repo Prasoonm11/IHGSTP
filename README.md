@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AtomQuest Goal Setting Portal
 
-## Getting Started
+A Supabase-backed web portal for end-to-end goal setting, approval, quarterly check-ins, and reporting.
 
-First, run the development server:
+## Features Implemented
+
+### Phase 1 (Must-Have)
+- Employee goal creation and goal-sheet submission.
+- Thrust area selection, goal title/description, UoM, targets, and weightage.
+- Validation rules:
+  - Max 8 goals per employee.
+  - Min 10% weightage per goal.
+  - Goal sheet submission only when total weightage is exactly 100%.
+- Manager/Admin approval queue:
+  - Inline edit of target and weightage.
+  - Approve and lock goals.
+  - Return goals for rework.
+- Shared goal push:
+  - Manager/Admin can push KPI goals to multiple employees.
+  - Shared goals are linked through `primary_goal_id`.
+
+### Phase 2 (Must-Have)
+- Quarterly update form with status: `not_started`, `on_track`, `completed`.
+- Progress score auto-calculation for UoM types:
+  - Numeric/% min: `achievement / target`
+  - Numeric/% max: `target / achievement`
+  - Timeline: completed by deadline => 100 else 0
+  - Zero-based: actual 0 => 100 else 0
+- Completion dashboard by role/team.
+
+### Governance & Reporting
+- CSV export for achievement report via `report_goal_progress` view.
+- Audit trail trigger for updates to locked goals.
+
+## Tech Stack
+- Next.js (App Router) + React + TypeScript
+- Tailwind CSS
+- Supabase Auth + Postgres + RLS
+
+## Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Configure environment:
+
+```bash
+cp .env.example .env.local
+```
+
+Set:
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+3. Apply database schema in Supabase SQL Editor:
+- Run `supabase/schema.sql`
+
+4. Start app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Demo Role Journeys
+- Employee: register/login -> create goals -> submit goal sheet -> update quarterly progress.
+- Manager: login -> review submitted goals -> edit/approve/rework -> push shared goals.
+- Admin: login -> all manager capabilities + completion dashboard + CSV export.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Notes
+- For real production hardening, add stricter RLS policies per manager hierarchy and server-side action auditing.
+- The schema seeds departments and thrust areas; create at least one manager and employee account to test approvals.
