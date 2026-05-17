@@ -5,6 +5,7 @@ import RoleLayout from '@/components/layout/role-layout'
 import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import type { Goal, GoalUpdate, Profile, Department, ThrustArea } from '@/lib/types'
+import { LoadingBar } from '@/components/ui/animations'
 
 const currentYear = new Date().getFullYear()
 const quarters = ['Q1', 'Q2', 'Q3', 'Q4'] as const
@@ -145,7 +146,7 @@ export default function AdminReportsPage() {
     return (
       <RoleLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <LoadingBar />
         </div>
       </RoleLayout>
     )
@@ -239,7 +240,7 @@ export default function AdminReportsPage() {
                   </div>
                   <div className="h-3 bg-[#081225] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-blue-500"
+                      className="h-full bg-violet-500"
                       style={{ width: `${td.percentage}%` }}
                     />
                   </div>

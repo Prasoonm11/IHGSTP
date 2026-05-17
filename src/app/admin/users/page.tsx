@@ -5,8 +5,16 @@ import RoleLayout from '@/components/layout/role-layout'
 import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile, Department, Role } from '@/lib/types'
+import { AnimatedNumber, CardGradient, PageHeader, LoadingSpinner, Badge, EmptyState, GradientButton, animationStyles } from '@/components/ui/animations'
+import { getTimeGreeting } from '@/lib/time'
 
 const currentYear = new Date().getFullYear()
+
+const roleConfig: Record<Role, { gradient: string; icon: string }> = {
+  employee: { gradient: 'from-blue-500 to-indigo-600', icon: '👤' },
+  manager: { gradient: 'from-purple-500 to-pink-600', icon: '👔' },
+  admin: { gradient: 'from-rose-500 to-red-600', icon: '⚡' },
+}
 
 export default function AdminUsersPage() {
   const { profile } = useAuth()
@@ -48,6 +56,13 @@ export default function AdminUsersPage() {
 
   const managers = useMemo(() => users.filter(u => u.role === 'manager' || u.role === 'admin'), [users])
   const deptMap = useMemo(() => new Map(departments.map(d => [d.id, d.name])), [departments])
+
+  const stats = useMemo(() => ({
+    total: users.length,
+    employees: users.filter(u => u.role === 'employee').length,
+    managers: users.filter(u => u.role === 'manager').length,
+    admins: users.filter(u => u.role === 'admin').length,
+  }), [users])
 
   const fetchData = useCallback(async () => {
     const [usersRes, deptRes] = await Promise.all([
@@ -163,8 +178,8 @@ export default function AdminUsersPage() {
   if (loading) {
     return (
       <RoleLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="flex items-center justify-center h-96">
+          <LoadingSpinner size="lg" />
         </div>
       </RoleLayout>
     )
@@ -172,62 +187,100 @@ export default function AdminUsersPage() {
 
   return (
     <RoleLayout>
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+      <style>{animationStyles}</style>
+      <div className="max-w-6xl mx-auto space-y-8 pb-8">
+        {/* Header Section */}
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white">User Management</h1>
-            <p className="text-slate-400 mt-1">Manage users, roles, and organization hierarchy</p>
+            <h1 className="text-4xl font-bold text-white">{getTimeGreeting()}, {profile?.first_name}</h1>
+            <p className="text-violet-300/60 mt-2">Manage users, roles, and organization hierarchy</p>
           </div>
+          
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+          <div className="p-4 bg-rose-500/20 border border-rose-500/30 rounded-xl text-rose-300 animate-fade-in-up">
             {error}
           </div>
         )}
         {success && (
-          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
+          <div className="p-4 bg-emerald-500/20 border border-emerald-500/30 rounded-xl text-emerald-300 animate-fade-in-up">
             {success}
           </div>
         )}
 
-        <div className="flex flex-wrap gap-4 mb-6">
-          <input
-            type="text"
-            placeholder="Search users..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            className="px-4 py-2 bg-[#0d1a36] border border-white/10 rounded-lg text-white placeholder-slate-500"
-          />
-
-          <select
-            value={roleFilter}
-            onChange={e => setRoleFilter(e.target.value)}
-            className="px-4 py-2 bg-[#0d1a36] border border-white/10 rounded-lg text-white"
-          >
-            <option value="all">All Roles</option>
-            <option value="employee">Employees</option>
-            <option value="manager">Managers</option>
-            <option value="admin">Admins</option>
-          </select>
-
-          <select
-            value={deptFilter}
-            onChange={e => setDeptFilter(e.target.value)}
-            className="px-4 py-2 bg-[#0d1a36] border border-white/10 rounded-lg text-white"
-          >
-            <option value="all">All Departments</option>
-            {departments.map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[
+            { label: 'Total Users', value: stats.total, icon: '👥', color: 'indigo' },
+            { label: 'Employees', value: stats.employees, icon: '👤', color: 'blue' },
+            { label: 'Managers', value: stats.managers, icon: '👔', color: 'purple' },
+            { label: 'Admins', value: stats.admins, icon: '⚡', color: 'rose' },
+          ].map((stat, i) => (
+            <div
+              key={stat.label}
+              className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-all animate-fade-in-up"
+              style={{ animationDelay: `${i * 100}ms` }}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-medium text-violet-300/60">{stat.label}</p>
+                <div className={`w-12 h-12 rounded-lg bg-${stat.color}-500/20 flex items-center justify-center text-xl`}>
+                  {stat.icon}
+                </div>
+              </div>
+              <p className="text-3xl font-bold text-white">
+                <AnimatedNumber value={stat.value} />
+              </p>
+            </div>
+          ))}
         </div>
 
-        <div className="bg-[#0d1a36] border border-white/10 rounded-xl overflow-hidden">
+        {/* Filters & Search */}
+        <div className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+          <h2 className="text-lg font-bold text-white mb-4">Search & Filter</h2>
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-64">
+              <input
+                type="text"
+                placeholder="Search by name or email..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50"
+              />
+            </div>
+            <select
+              value={roleFilter}
+              onChange={e => setRoleFilter(e.target.value)}
+              className="px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-violet-500/50"
+            >
+              <option value="all">All Roles</option>
+              <option value="employee">Employees</option>
+              <option value="manager">Managers</option>
+              <option value="admin">Admins</option>
+            </select>
+            <select
+              value={deptFilter}
+              onChange={e => setDeptFilter(e.target.value)}
+              className="px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-violet-500/50"
+            >
+              <option value="all">All Departments</option>
+              {departments.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Users Table */}
+        <div className="bg-black/40 backdrop-blur-sm border border-white/10 rounded-2xl overflow-hidden">
+          <div className="p-6 border-b border-white/10">
+            <h2 className="text-2xl font-bold text-white">User Directory</h2>
+            <p className="text-violet-300/60 text-sm mt-1">Showing {filteredUsers.length} of {users.length} users</p>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="text-left text-slate-400 text-sm border-b border-white/10">
+                <tr className="text-left text-white/60 text-sm border-b border-white/10">
                   <th className="p-4 font-medium">User</th>
                   <th className="p-4 font-medium">Role</th>
                   <th className="p-4 font-medium">Department</th>
@@ -239,66 +292,52 @@ export default function AdminUsersPage() {
               <tbody>
                 {filteredUsers.map(user => {
                   const manager = users.find(u => u.id === user.manager_id)
-                  const roleColors: Record<Role, string> = {
-                    employee: 'bg-blue-600',
-                    manager: 'bg-purple-600',
-                    admin: 'bg-red-600',
-                  }
+                  const config = roleConfig[user.role]
 
                   return (
-                    <tr key={user.id} className="border-b border-white/5">
+                    <tr key={user.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+                          <div className={`w-10 h-10 rounded-xl bg-linear-to-br ${config.gradient} flex items-center justify-center text-white font-bold shadow-lg text-sm`}>
                             {user.first_name[0]}{user.last_name[0]}
                           </div>
                           <div>
                             <p className="text-white font-medium">
                               {user.first_name} {user.last_name}
                             </p>
-                            <p className="text-sm text-slate-500">{user.email}</p>
+                            <p className="text-white/50 text-sm">{user.email}</p>
                           </div>
                         </div>
                       </td>
                       <td className="p-4">
-                        <span className={`px-2 py-1 rounded text-xs ${roleColors[user.role]} text-white`}>
+                        <span className="px-3 py-1 rounded-lg text-xs font-semibold bg-white/10 text-violet-300 capitalize">
                           {user.role}
                         </span>
                       </td>
-                      <td className="p-4 text-slate-300">
-                        {user.department_id ? deptMap.get(user.department_id) : '-'}
-                      </td>
-                      <td className="p-4 text-slate-300">
-                        {manager ? `${manager.first_name} ${manager.last_name}` : '-'}
-                      </td>
+                      <td className="p-4 text-white/70">{deptMap.get(user.department_id) || '-'}</td>
+                      <td className="p-4 text-white/70">{manager ? `${manager.first_name} ${manager.last_name}` : '-'}</td>
                       <td className="p-4">
-                        <span className={`px-2 py-1 rounded text-xs ${user.is_active ? 'bg-green-600' : 'bg-slate-600'} text-white`}>
-                          {user.is_active ? 'Active' : 'Inactive'}
+                        <span className={`text-xs font-semibold px-3 py-1 rounded-lg ${
+                          user.is_active 
+                            ? 'bg-emerald-500/20 text-emerald-300'
+                            : 'bg-slate-500/20 text-slate-300'
+                        }`}>
+                          {user.is_active ? '🟢 Active' : '⚫ Inactive'}
                         </span>
                       </td>
                       <td className="p-4">
-                        <div className="flex gap-2">
+                        <div className="flex items-center gap-2">
                           <button
                             onClick={() => handleOpenModal(user)}
-                            className="px-3 py-1 text-sm bg-slate-600 hover:bg-slate-700 text-white rounded transition-colors"
+                            className="p-2 hover:bg-white/10 rounded-lg transition-all text-sm text-violet-300 hover:text-violet-100"
                           >
-                            Edit
+                            ✏️
                           </button>
                           <button
                             onClick={() => handleToggleActive(user)}
-                            className={`px-3 py-1 text-sm rounded transition-colors ${
-                              user.is_active
-                                ? 'bg-red-600 hover:bg-red-700 text-white'
-                                : 'bg-green-600 hover:bg-green-700 text-white'
-                            }`}
+                            className="p-2 hover:bg-white/10 rounded-lg transition-all text-sm text-white/60 hover:text-white"
                           >
-                            {user.is_active ? 'Deactivate' : 'Activate'}
-                          </button>
-                          <button
-                            onClick={() => handleUnlockGoal(user.id)}
-                            className="px-3 py-1 text-sm bg-yellow-600 hover:bg-yellow-700 text-white rounded transition-colors"
-                          >
-                            Unlock Goals
+                            {user.is_active ? '🔒' : '🔓'}
                           </button>
                         </div>
                       </td>
@@ -310,70 +349,51 @@ export default function AdminUsersPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
-            <p className="text-sm text-slate-400">Total Users</p>
-            <p className="text-3xl font-bold text-white mt-2">{users.length}</p>
-          </div>
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
-            <p className="text-sm text-slate-400">Employees</p>
-            <p className="text-3xl font-bold text-blue-400 mt-2">
-              {users.filter(u => u.role === 'employee').length}
-            </p>
-          </div>
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
-            <p className="text-sm text-slate-400">Managers</p>
-            <p className="text-3xl font-bold text-purple-400 mt-2">
-              {users.filter(u => u.role === 'manager').length}
-            </p>
-          </div>
-        </div>
-
         {showModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6 w-full max-w-md">
-              <h3 className="text-lg font-semibold text-white mb-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in-up">
+            <CardGradient gradient="from-slate-800/90 to-slate-900/90" className="p-6 w-full max-w-md">
+              <h3 className="text-xl font-semibold text-white mb-4">
                 {editingUser ? 'Edit User' : 'Add User'}
               </h3>
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">First Name</label>
+                    <label className="text-white/50 text-sm">First Name</label>
                     <input
                       type="text"
                       value={formData.first_name}
                       onChange={e => setFormData({ ...formData, first_name: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
+                      className="w-full mt-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-slate-400 mb-1">Last Name</label>
+                    <label className="text-white/50 text-sm">Last Name</label>
                     <input
                       type="text"
                       value={formData.last_name}
                       onChange={e => setFormData({ ...formData, last_name: e.target.value })}
-                      className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
+                      className="w-full mt-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Email</label>
+                  <label className="text-white/50 text-sm">Email</label>
                   <input
                     type="email"
                     value={formData.email}
                     disabled
-                    className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-slate-400"
+                    className="w-full mt-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white/50"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Role</label>
+                  <label className="text-white/50 text-sm">Role</label>
                   <select
                     value={formData.role}
                     onChange={e => setFormData({ ...formData, role: e.target.value as Role })}
-                    className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
+                    className="w-full mt-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white"
                   >
                     <option value="employee">Employee</option>
                     <option value="manager">Manager</option>
@@ -382,11 +402,11 @@ export default function AdminUsersPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Department</label>
+                  <label className="text-white/50 text-sm">Department</label>
                   <select
                     value={formData.department_id}
                     onChange={e => setFormData({ ...formData, department_id: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
+                    className="w-full mt-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white"
                   >
                     <option value="">No Department</option>
                     {departments.map(d => (
@@ -396,11 +416,11 @@ export default function AdminUsersPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Manager</label>
+                  <label className="text-white/50 text-sm">Manager</label>
                   <select
                     value={formData.manager_id}
                     onChange={e => setFormData({ ...formData, manager_id: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
+                    className="w-full mt-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white"
                   >
                     <option value="">No Manager</option>
                     {managers.filter(m => m.id !== editingUser?.id).map(m => (
@@ -413,21 +433,23 @@ export default function AdminUsersPage() {
               </div>
 
               <div className="flex gap-3 mt-6">
-                <button
+                <GradientButton
                   onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium"
+                  gradient="from-slate-500 to-slate-600"
+                  className="flex-1"
                 >
                   Cancel
-                </button>
-                <button
+                </GradientButton>
+                <GradientButton
                   onClick={handleSave}
                   disabled={saving}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50"
+                  gradient="from-cyan-500 to-blue-500"
+                  className="flex-1"
                 >
                   {saving ? 'Saving...' : 'Save'}
-                </button>
+                </GradientButton>
               </div>
-            </div>
+            </CardGradient>
           </div>
         )}
       </div>

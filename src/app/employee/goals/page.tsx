@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import RoleLayout from '@/components/layout/role-layout'
 import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
-import type { Goal, ThrustArea, GoalWithUpdates, UomType, GoalStatus, SharedGoal } from '@/lib/types'
-import { uomOptions, quarterWindows } from '@/lib/constants'
+import type { Goal, ThrustArea, GoalWithUpdates, UomType, GoalStatus, GoalUpdate } from '@/lib/types'
+import { uomOptions } from '@/lib/constants'
+import { AnimatedNumber, LoadingSpinner, animationStyles } from '@/components/ui/animations'
+import { getTimeGreeting, formatISTDate } from '@/lib/time'
 
 const currentYear = new Date().getFullYear()
 
@@ -24,10 +26,109 @@ const emptyForm: GoalFormData = {
   title: '',
   description: '',
   thrust_area_id: '',
-  uom_type: 'numeric_min',
+  uom_type: 'timeline',
   target_value: '',
   target_date: '',
   weightage: '10',
+}
+
+function AnimatedInput({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+  required = false,
+  options,
+  rows = 2
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  type?: string
+  placeholder?: string
+  required?: boolean
+  options?: { value: string; label: string }[]
+  rows?: number
+}) {
+  if (options) {
+    return (
+      <div className="space-y-1.5">
+        <label className="text-sm text-white/70">{label} {required && <span className="text-rose-400">*</span>}</label>
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 transition-all"
+        >
+          <option value="" className="bg-slate-800">Select...</option>
+          {options.map(opt => (
+            <option key={opt.value} value={opt.value} className="bg-slate-800">{opt.label}</option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+
+  if (rows > 1) {
+    return (
+      <div className="space-y-1.5">
+        <label className="text-sm text-white/70">{label} {required && <span className="text-rose-400">*</span>}</label>
+        <textarea
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          rows={rows}
+          placeholder={placeholder}
+          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 transition-all resize-none"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-sm text-white/70">{label} {required && <span className="text-rose-400">*</span>}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/50 transition-all"
+      />
+    </div>
+  )
+}
+
+function GoalCard({
+  goal,
+  thrustAreaName,
+  onEdit,
+  onDelete,
+}: {
+  goal: GoalWithUpdates
+  thrustAreaName: string
+  onEdit?: () => void
+  onDelete?: () => void
+}) {
+  return (
+    <div className="p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-all group">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <h4 className="text-white font-medium text-sm truncate">{goal.title}</h4>
+          <p className="text-white/50 text-xs mt-1">{thrustAreaName}</p>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-white/60 text-xs bg-white/10 px-2 py-1 rounded">{goal.weightage}%</span>
+            {goal.locked && <span className="text-yellow-400 text-xs">🔒</span>}
+          </div>
+        </div>
+        {goal.status === 'draft' && !goal.locked && (
+          <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => onEdit?.()} className="p-1 rounded bg-white/10 hover:bg-violet-500/30 text-white/70">✏️</button>
+            <button onClick={() => onDelete?.()} className="p-1 rounded bg-white/10 hover:bg-rose-500/30 text-white/70">🗑️</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
 }
 
 export default function EmployeeGoalsPage() {
@@ -35,12 +136,13 @@ export default function EmployeeGoalsPage() {
   const supabase = createClient()
 
   const [goals, setGoals] = useState<GoalWithUpdates[]>([])
-  const [sharedGoals, setSharedGoals] = useState<SharedGoal[]>([])
   const [thrustAreas, setThrustAreas] = useState<ThrustArea[]>([])
+  const [goalUpdates, setGoalUpdates] = useState<GoalUpdate[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<GoalFormData>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [showForm, setShowForm] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -48,51 +150,36 @@ export default function EmployeeGoalsPage() {
   const draftGoals = useMemo(() => myGoals.filter(g => g.status === 'draft'), [myGoals])
   const submittedGoals = useMemo(() => myGoals.filter(g => g.status === 'submitted'), [myGoals])
   const approvedGoals = useMemo(() => myGoals.filter(g => g.status === 'approved'), [myGoals])
-
+  const completedCount = useMemo(() => goalUpdates.filter(u => u.status === 'completed').length, [goalUpdates])
   const weightageTotal = useMemo(() => draftGoals.reduce((sum, g) => sum + Number(g.weightage), 0), [draftGoals])
+  const canSubmitDraftGoals = useMemo(
+    () => draftGoals.length > 0 && Math.abs(weightageTotal - 100) < 0.0001,
+    [draftGoals.length, weightageTotal]
+  )
 
-  const validationError = useMemo(() => {
-    const count = draftGoals.length + (editingId ? 0 : 1)
-    if (count > 8) return 'Maximum 8 goals allowed'
-    const minWeight = Number(form.weightage)
-    if (minWeight < 10) return 'Minimum 10% weightage per goal'
-    if (editingId) return null
-    const newTotal = weightageTotal + minWeight
-    if (newTotal > 100) return `Total weightage would be ${newTotal}% (max 100%)`
-    return null
-  }, [draftGoals, editingId, form.weightage, weightageTotal])
-
-  const canSubmit = useMemo(() => {
-    return weightageTotal === 100 && draftGoals.length >= 1
-  }, [weightageTotal, draftGoals])
+  const thrustAreaMap = useMemo(() => new Map(thrustAreas.map(t => [t.id, t.name])), [thrustAreas])
+  const isTimelineUom = form.uom_type === 'timeline'
+  const valueLabel = isTimelineUom ? 'Timeline / Deadline' : 'Target Value'
 
   const fetchData = useCallback(async () => {
     if (!profile) return
+    const currentYear = new Date().getFullYear()
 
-    const [goalsRes, thrustRes, sharedRes] = await Promise.all([
-      supabase
-        .from('goals')
-        .select('*')
-        .eq('cycle_year', currentYear)
-        .order('created_at', { ascending: false }),
+    const [goalsRes, thrustRes, updatesRes] = await Promise.all([
+      supabase.from('goals').select('*').eq('cycle_year', currentYear).order('created_at', { ascending: false }),
       supabase.from('thrust_areas').select('*').order('name'),
-      supabase.from('shared_goals').select('*'),
+      supabase.from('goal_updates').select('*'),
     ])
 
     const goalsData = (goalsRes.data || []) as Goal[]
     const thrustData = (thrustRes.data || []) as ThrustArea[]
-    const sharedData = (sharedRes.data || []) as SharedGoal[]
+    const updatesData = (updatesRes.data || []) as GoalUpdate[]
 
-    const thrustMap = new Map(thrustData.map(t => [t.id, t]))
-
-    const goalsWithDetails: GoalWithUpdates[] = goalsData.map(g => ({
-      ...g,
-      thrust_area: thrustMap.get(g.thrust_area_id),
-    }))
+    const goalsWithDetails: GoalWithUpdates[] = goalsData.map(g => ({ ...g, thrust_area: thrustData.find(t => t.id === g.thrust_area_id) }))
 
     setGoals(goalsWithDetails)
     setThrustAreas(thrustData)
-    setSharedGoals(sharedData.filter(sg => !profile.department_id || sg.department_id === profile.department_id))
+    setGoalUpdates(updatesData)
     setLoading(false)
   }, [supabase, profile])
 
@@ -100,9 +187,8 @@ export default function EmployeeGoalsPage() {
     fetchData()
   }, [fetchData])
 
-  const handleSave = async (asDraft: boolean = true) => {
+  const handleSave = async () => {
     if (!profile) return
-
     setError('')
     setSaving(true)
 
@@ -116,55 +202,27 @@ export default function EmployeeGoalsPage() {
         target_value: form.target_value ? Number(form.target_value) : null,
         target_date: form.target_date || null,
         weightage: Number(form.weightage),
-        status: asDraft ? 'draft' : 'submitted',
-        cycle_year: currentYear,
+        status: 'draft' as GoalStatus,
+        cycle_year: new Date().getFullYear(),
         locked: false,
         is_shared: false,
       }
 
       if (editingId) {
-        const { error: updateError } = await supabase
-          .from('goals')
-          .update(goalData)
-          .eq('id', editingId)
-
+        const { error: updateError } = await supabase.from('goals').update(goalData).eq('id', editingId)
         if (updateError) throw updateError
-        setSuccess(editingId ? 'Goal updated!' : 'Goal saved as draft!')
       } else {
         const { error: insertError } = await supabase.from('goals').insert(goalData)
         if (insertError) throw insertError
-        setSuccess('Goal saved as draft!')
       }
 
       setForm(emptyForm)
       setEditingId(null)
+      setShowForm(false)
+      setSuccess('Goal saved!')
       await fetchData()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save goal')
-    } finally {
-      setSaving(false)
-      setTimeout(() => setSuccess(''), 3000)
-    }
-  }
-
-  const handleSubmitSheet = async () => {
-    if (!profile) return
-    setError('')
-    setSaving(true)
-
-    try {
-      const { error } = await supabase
-        .from('goals')
-        .update({ status: 'submitted' })
-        .eq('employee_id', profile.id)
-        .eq('status', 'draft')
-        .eq('cycle_year', currentYear)
-
-      if (error) throw error
-      setSuccess('Goal sheet submitted for approval!')
-      await fetchData()
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to submit')
+      setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setSaving(false)
       setTimeout(() => setSuccess(''), 3000)
@@ -183,350 +241,266 @@ export default function EmployeeGoalsPage() {
       target_date: goal.target_date || '',
       weightage: goal.weightage.toString(),
     })
+    setShowForm(true)
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this goal?')) return
+    if (!confirm('Delete this goal?')) return
+    setError('')
+    setSuccess('')
 
-    const { error } = await supabase.from('goals').delete().eq('id', id)
-    if (!error) {
+    try {
+      const { error: deleteError } = await supabase
+        .from('goals')
+        .delete()
+        .eq('id', id)
+        .eq('employee_id', profile?.id ?? '')
+        .eq('status', 'draft')
+
+      if (deleteError) throw deleteError
+
       setSuccess('Goal deleted')
       await fetchData()
       setTimeout(() => setSuccess(''), 3000)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to delete goal')
     }
   }
 
-  const handleSharedGoalWeightage = async (goalId: string, weightage: number) => {
-    const { error } = await supabase
-      .from('goals')
-      .update({ weightage })
-      .eq('id', goalId)
+  const handleSubmitDraftGoals = async () => {
+    if (!profile) return
 
-    if (!error) {
-      setSuccess('Weightage updated')
+    setError('')
+    setSuccess('')
+
+    if (draftGoals.length === 0) {
+      setError('No draft goals available to submit.')
+      return
+    }
+
+    if (!canSubmitDraftGoals) {
+      setError('Draft submission is allowed only when total draft weightage is exactly 100%.')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const { error: submitError } = await supabase
+        .from('goals')
+        .update({ status: 'submitted' as GoalStatus })
+        .eq('employee_id', profile.id)
+        .eq('cycle_year', currentYear)
+        .eq('status', 'draft')
+
+      if (submitError) throw submitError
+
+      setSuccess('Draft goals submitted successfully!')
       await fetchData()
       setTimeout(() => setSuccess(''), 3000)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to submit draft goals')
+    } finally {
+      setSaving(false)
     }
-  }
-
-  const getStatusBadge = (status: GoalStatus, locked: boolean) => {
-    const colors: Record<GoalStatus, string> = {
-      draft: 'bg-slate-600',
-      submitted: 'bg-yellow-600',
-      approved: 'bg-green-600',
-      rework: 'bg-red-600',
-    }
-    return (
-      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${colors[status]}`}>
-        {locked && <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>}
-        {status}
-      </span>
-    )
   }
 
   if (loading) {
     return (
       <RoleLayout>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+        <div className="flex items-center justify-center h-96">
+          <LoadingSpinner size="lg" />
         </div>
       </RoleLayout>
     )
   }
 
+  const thrustAreaOptions = thrustAreas.map(t => ({ value: t.id, label: t.name }))
+
   return (
     <RoleLayout>
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-white">My Goals</h1>
-            <p className="text-slate-400 mt-1">Create and manage your goals for {currentYear}</p>
+      <style>{animationStyles}</style>
+      <div className="min-h-screen px-6 py-6 space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-4xl font-bold text-white mb-2">{getTimeGreeting()}, {profile?.first_name}</h1>
+          <p className="text-white/60">Track and manage your career goals</p>
+        </div>
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-white/70">Total Goals</p>
+              <div className="w-10 h-10 rounded-lg bg-violet-500/20 flex items-center justify-center">🎯</div>
+            </div>
+            <p className="text-3xl font-bold text-white"><AnimatedNumber value={myGoals.length} /></p>
+            <p className="text-xs text-white/50 mt-2">{draftGoals.length} draft</p>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm text-slate-400">Weightage Total</p>
-              <p className={`text-2xl font-bold ${weightageTotal === 100 ? 'text-green-400' : 'text-yellow-400'}`}>
-                {weightageTotal}%
+
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-white/70">Submitted</p>
+              <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">📋</div>
+            </div>
+            <p className="text-3xl font-bold text-white"><AnimatedNumber value={submittedGoals.length} /></p>
+            <p className="text-xs text-white/50 mt-2">Pending approval</p>
+          </div>
+
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-white/70">Approved</p>
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">✅</div>
+            </div>
+            <p className="text-3xl font-bold text-white"><AnimatedNumber value={approvedGoals.length} /></p>
+            <p className="text-xs text-white/50 mt-2">Active</p>
+          </div>
+
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-all">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm font-medium text-white/70">Completed</p>
+              <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">🔥</div>
+            </div>
+            <p className="text-3xl font-bold text-white"><AnimatedNumber value={completedCount} /></p>
+            <p className="text-xs text-white/50 mt-2">This year</p>
+          </div>
+        </div>
+
+        {/* Quick Action Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+            <h3 className="text-white font-semibold mb-4">Quick Action</h3>
+            <button onClick={() => { setForm(emptyForm); setEditingId(null); setShowForm(true) }} className="w-full py-3 rounded-lg bg-linear-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:shadow-lg transition-all">
+              + Add new goal
+            </button>
+          </div>
+
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="text-white font-semibold">Draft Weightage</h3>
+              <button
+                onClick={handleSubmitDraftGoals}
+                disabled={saving || !canSubmitDraftGoals}
+                className="px-4 py-2 rounded-lg bg-linear-to-r from-emerald-500 to-teal-500 text-white text-sm font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {saving ? 'Submitting...' : 'Submit'}
+              </button>
+            </div>
+            <div className="flex items-baseline gap-2"><span className="text-3xl font-bold text-white">{weightageTotal}%</span><span className="text-white/60 text-sm">/ 100%</span></div>
+            <div className="mt-3 w-full h-2 bg-white/10 rounded-full overflow-hidden"><div className="h-full bg-linear-to-r from-violet-500 to-fuchsia-500 transition-all" style={{ width: `${Math.min(weightageTotal, 100)}%` }} /></div>
+            {!canSubmitDraftGoals && (
+              <p className="text-xs text-amber-300/80 mt-2">
+                Submission is enabled only when draft weightage totals exactly 100%.
               </p>
-            </div>
-            {canSubmit && (
-              <button
-                onClick={handleSubmitSheet}
-                disabled={saving}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-              >
-                Submit Goal Sheet
-              </button>
             )}
           </div>
         </div>
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-            {error}
+        {/* Goal Sections */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+            <h3 className="text-white font-semibold mb-4 flex items-center gap-2">✏️ Draft Goals ({draftGoals.length})</h3>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {draftGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No draft goals</p> : draftGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} onEdit={() => handleEdit(goal)} onDelete={() => handleDelete(goal.id)} />)}
+            </div>
           </div>
-        )}
-        {success && (
-          <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
-            {success}
+
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+            <h3 className="text-white font-semibold mb-4 flex items-center gap-2">📋 Submitted ({submittedGoals.length})</h3>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {submittedGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No submitted</p> : submittedGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} />)}
+            </div>
           </div>
-        )}
 
-        {approvedGoals.length === 0 && draftGoals.length < 8 && (
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6 mb-6">
-            <h2 className="text-lg font-semibold text-white mb-4">
-              {editingId ? 'Edit Goal' : 'Add New Goal'}
-            </h2>
+          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
+            <h3 className="text-white font-semibold mb-4 flex items-center gap-2">✅ Approved ({approvedGoals.length})</h3>
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {approvedGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No approved</p> : approvedGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} />)}
+            </div>
+          </div>
+        </div>
 
-            {validationError && !editingId && (
-              <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400 text-sm">
-                {validationError}
-              </div>
-            )}
+        {/* Form Modal */}
+        {showForm && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+            <div className="bg-black/80 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+              <h2 className="text-2xl font-bold text-white mb-6">{editingId ? 'Edit Goal' : 'Create New Goal'}</h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm text-slate-400 mb-1">Goal Title *</label>
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={e => setForm({ ...form, title: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                  placeholder="Enter goal title"
-                />
-              </div>
+              {error && <div className="mb-4 p-3 bg-rose-500/20 border border-rose-500/50 rounded-lg text-rose-300 text-sm">{error}</div>}
 
-              <div className="md:col-span-2">
-                <label className="block text-sm text-slate-400 mb-1">Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={e => setForm({ ...form, description: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                  rows={2}
-                  placeholder="Describe your goal and success criteria"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Thrust Area *</label>
-                <select
-                  value={form.thrust_area_id}
-                  onChange={e => setForm({ ...form, thrust_area_id: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                >
-                  <option value="">Select thrust area</option>
-                  {thrustAreas.map(ta => (
-                    <option key={ta.id} value={ta.id}>{ta.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Unit of Measure *</label>
-                <select
-                  value={form.uom_type}
-                  onChange={e => setForm({ ...form, uom_type: e.target.value as UomType })}
-                  className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                >
-                  {uomOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {['numeric_min', 'numeric_max', 'percent_min', 'percent_max'].includes(form.uom_type) && (
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Target Value *</label>
-                  <input
-                    type="number"
-                    value={form.target_value}
-                    onChange={e => setForm({ ...form, target_value: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                    placeholder="Enter target"
-                  />
+                  <label className="text-sm text-white/70">Goal Name</label>
+                  <input type="text" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Your goal name" className="w-full mt-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:border-violet-500/50 outline-none transition-all" />
                 </div>
-              )}
 
-              {form.uom_type === 'timeline' && (
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1">Target Date *</label>
-                  <input
-                    type="date"
-                    value={form.target_date}
-                    onChange={e => setForm({ ...form, target_date: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                  />
+                  <label className="text-sm text-white/70">Description</label>
+                  <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Describe the goal" className="w-full mt-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 resize-none focus:border-violet-500/50 outline-none" />
                 </div>
-              )}
 
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Weightage (%) *</label>
-                <input
-                  type="number"
-                  value={form.weightage}
-                  onChange={e => setForm({ ...form, weightage: e.target.value })}
-                  min="10"
-                  max="100"
-                  className="w-full px-3 py-2 bg-[#081225] border border-white/10 rounded-lg text-white"
-                />
+                <div>
+                  <label className="text-sm text-white/70">Thrust Area</label>
+                  <select value={form.thrust_area_id} onChange={e => setForm({ ...form, thrust_area_id: e.target.value })} className="w-full mt-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:border-violet-500/50 outline-none">
+                    <option value="">Select...</option>
+                    {thrustAreaOptions.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm text-white/70">Weightage (%)</label>
+                  <input type="number" value={form.weightage} onChange={e => setForm({ ...form, weightage: e.target.value })} className="w-full mt-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:border-violet-500/50 outline-none" />
+                </div>
+
+                <div>
+                  <label className="text-sm text-white/70">UoM Type</label>
+                  <select
+                    value={form.uom_type}
+                    onChange={e => setForm({
+                      ...form,
+                      uom_type: e.target.value as UomType,
+                      target_value: e.target.value === 'timeline' ? form.target_value : form.target_value,
+                      target_date: e.target.value === 'timeline' ? form.target_date : '',
+                    })}
+                    className="w-full mt-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:border-violet-500/50 outline-none"
+                  >
+                    {uomOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-sm text-white/70">{valueLabel}</label>
+                  {isTimelineUom ? (
+                    <input
+                      type="date"
+                      value={form.target_date}
+                      onChange={e => setForm({ ...form, target_date: e.target.value, target_value: '' })}
+                      className="w-full mt-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:border-violet-500/50 outline-none"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      value={form.target_value}
+                      onChange={e => setForm({ ...form, target_value: e.target.value, target_date: '' })}
+                      className="w-full mt-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:border-violet-500/50 outline-none"
+                    />
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button onClick={() => setShowForm(false)} className="flex-1 px-4 py-3 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-all font-medium">Cancel</button>
+                  <button onClick={handleSave} disabled={saving} className="flex-1 px-4 py-3 rounded-lg bg-linear-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+                </div>
               </div>
-            </div>
-
-            <div className="flex gap-3 mt-4">
-              <button
-                onClick={() => handleSave(true)}
-                disabled={saving || !form.title || !form.thrust_area_id || (!form.target_value && form.uom_type !== 'timeline' && form.uom_type !== 'zero')}
-                className="px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-              >
-                Save as Draft
-              </button>
-              <button
-                onClick={() => handleSave(false)}
-                disabled={saving || validationError !== null || !canSubmit || !form.title || !form.thrust_area_id}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-              >
-                Save & Continue
-              </button>
-              {editingId && (
-                <button
-                  onClick={() => { setEditingId(null); setForm(emptyForm); }}
-                  className="px-4 py-2 text-slate-400 hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-              )}
             </div>
           </div>
         )}
 
-        {sharedGoals.length > 0 && (
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6 mb-6">
-            <h2 className="text-lg font-semibold text-white mb-4">Department Shared Goals</h2>
-            <p className="text-sm text-slate-400 mb-4">These goals are assigned by your department. You can adjust the weightage.</p>
-            <div className="space-y-3">
-              {sharedGoals.map(sg => {
-                const myGoal = myGoals.find(g => g.primary_goal_id === sg.id)
-                return (
-                  <div key={sg.id} className="flex items-center justify-between p-4 bg-[#081225] rounded-lg">
-                    <div>
-                      <p className="text-white font-medium">{sg.title}</p>
-                      <p className="text-sm text-slate-400">{sg.description}</p>
-                      <p className="text-sm text-slate-400 mt-1">
-                        Target: {sg.target_value} | UoM: {sg.uom_type}
-                      </p>
-                    </div>
-                    {myGoal ? (
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          value={myGoal.weightage}
-                          onChange={e => handleSharedGoalWeightage(myGoal.id, Number(e.target.value))}
-                          className="w-20 px-2 py-1 bg-[#0d1a36] border border-white/10 rounded text-white text-center"
-                          min="0"
-                          max="100"
-                        />
-                        <span className="text-slate-400">%</span>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-yellow-400">Not adopted</span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Draft Goals ({draftGoals.length})</h3>
-            {draftGoals.length === 0 ? (
-              <p className="text-slate-400 text-sm">No draft goals yet</p>
-            ) : (
-              <div className="space-y-3">
-                {draftGoals.map(g => (
-                  <div key={g.id} className="p-3 bg-[#081225] rounded-lg">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="text-white font-medium">{g.title}</p>
-                        <p className="text-sm text-slate-400">{g.thrust_area?.name}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-blue-400 font-medium">{g.weightage}%</p>
-                        {getStatusBadge(g.status, g.locked)}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => handleEdit(g)}
-                        className="text-sm text-blue-400 hover:text-blue-300"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(g.id)}
-                        className="text-sm text-red-400 hover:text-red-300"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Submitted ({submittedGoals.length})</h3>
-            {submittedGoals.length === 0 ? (
-              <p className="text-slate-400 text-sm">No goals submitted</p>
-            ) : (
-              <div className="space-y-3">
-                {submittedGoals.map(g => (
-                  <div key={g.id} className="p-3 bg-[#081225] rounded-lg">
-                    <p className="text-white font-medium">{g.title}</p>
-                    <p className="text-sm text-slate-400">{g.thrust_area?.name}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-yellow-400 font-medium">{g.weightage}%</span>
-                      {getStatusBadge(g.status, g.locked)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Approved ({approvedGoals.length})</h3>
-            {approvedGoals.length === 0 ? (
-              <p className="text-slate-400 text-sm">No approved goals yet</p>
-            ) : (
-              <div className="space-y-3">
-                {approvedGoals.map(g => (
-                  <div key={g.id} className="p-3 bg-[#081225] rounded-lg">
-                    <p className="text-white font-medium">{g.title}</p>
-                    <p className="text-sm text-slate-400">{g.thrust_area?.name}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-green-400 font-medium">{g.weightage}%</span>
-                      {getStatusBadge(g.status, g.locked)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="mt-6 p-4 bg-[#0d1a36] border border-white/10 rounded-xl">
-          <h3 className="text-sm font-medium text-slate-400 mb-2">Validation Rules</h3>
-          <ul className="text-sm text-slate-500 space-y-1">
-            <li>• Minimum 1 goal required to submit</li>
-            <li>• Maximum 8 goals per cycle</li>
-            <li>• Each goal must have at least 10% weightage</li>
-            <li>• Total weightage must equal 100% to submit</li>
-            <li>• Once approved, goals are locked and cannot be edited</li>
-          </ul>
-        </div>
+        {!showForm && error && <div className="fixed bottom-20 right-6 p-4 bg-rose-500/20 border border-rose-500/50 rounded-lg text-rose-300 text-sm">⚠️ {error}</div>}
+        {success && <div className="fixed bottom-6 right-6 p-4 bg-emerald-500/20 border border-emerald-500/50 rounded-lg text-emerald-300 text-sm">✅ {success}</div>}
       </div>
     </RoleLayout>
   )

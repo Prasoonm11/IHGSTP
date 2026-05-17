@@ -5,6 +5,7 @@ import RoleLayout from '@/components/layout/role-layout'
 import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import type { AuditLog, Profile } from '@/lib/types'
+import { LoadingBar } from '@/components/ui/animations'
 
 export default function AdminAuditPage() {
   const { profile } = useAuth()
@@ -99,7 +100,7 @@ export default function AdminAuditPage() {
     return (
       <RoleLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <LoadingBar />
         </div>
       </RoleLayout>
     )
@@ -117,7 +118,7 @@ export default function AdminAuditPage() {
           </div>
           <button
             onClick={exportToCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:shadow-lg text-white rounded-lg font-medium"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -218,7 +219,7 @@ export default function AdminAuditPage() {
                           <span className={`px-2 py-1 rounded text-xs ${
                             isLockedChange ? 'bg-red-600' :
                             log.action.includes('CREATE') ? 'bg-green-600' :
-                            log.action.includes('UPDATE') ? 'bg-blue-600' :
+                            log.action.includes('UPDATE') ? 'bg-violet-600' :
                             'bg-slate-600'
                           } text-white`}>
                             {log.action}

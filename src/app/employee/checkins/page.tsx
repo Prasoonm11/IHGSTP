@@ -6,6 +6,7 @@ import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import type { Goal, GoalUpdate, ThrustArea, ProgressStatus } from '@/lib/types'
 import { quarterWindows } from '@/lib/constants'
+import { LoadingBar } from '@/components/ui/animations'
 
 const currentYear = new Date().getFullYear()
 
@@ -133,7 +134,7 @@ export default function EmployeeCheckinsPage() {
   const getProgressColor = (status: ProgressStatus): string => {
     const colors: Record<ProgressStatus, string> = {
       not_started: 'bg-slate-500',
-      on_track: 'bg-blue-500',
+      on_track: 'bg-violet-500',
       completed: 'bg-green-500',
     }
     return colors[status]
@@ -152,7 +153,7 @@ export default function EmployeeCheckinsPage() {
     return (
       <RoleLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <LoadingBar />
         </div>
       </RoleLayout>
     )
@@ -162,7 +163,7 @@ export default function EmployeeCheckinsPage() {
 
   return (
     <RoleLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="space-y-6 pb-8 px-6">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-white">Quarterly Check-ins</h1>
           <p className="text-slate-400 mt-1">Update your progress on approved goals</p>
@@ -175,8 +176,8 @@ export default function EmployeeCheckinsPage() {
               onClick={() => setSelectedQuarter(q)}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 selectedQuarter === q
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-[#0d1a36] text-slate-400 hover:text-white'
+                  ? 'bg-violet-600 text-white'
+                  : 'bg-black/40 text-violet-300/60 hover:text-violet-100'
               }`}
             >
               {q}
@@ -233,7 +234,7 @@ export default function EmployeeCheckinsPage() {
                       }}
                       className={`p-4 rounded-lg text-left transition-colors ${
                         selectedGoalId === g.id
-                          ? 'bg-blue-600 border-2 border-blue-400'
+                          ? 'bg-violet-600 border-2 border-violet-400'
                           : 'bg-[#081225] border-2 border-transparent hover:border-white/10'
                       }`}
                     >
@@ -254,7 +255,7 @@ export default function EmployeeCheckinsPage() {
             </div>
 
             {selectedGoalId && (
-              <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
+              <div className="bg-black/40 border border-white/10 rounded-xl p-6">
                 <h2 className="text-lg font-semibold text-white mb-4">
                   Update Progress - {selectedQuarter}
                 </h2>
@@ -307,7 +308,7 @@ export default function EmployeeCheckinsPage() {
                   <button
                     onClick={handleSaveUpdate}
                     disabled={saving || !quarterWindowOpen}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                    className="px-4 py-2 bg-linear-to-r from-violet-500 to-fuchsia-500 hover:shadow-lg text-white rounded-lg font-medium transition-all disabled:opacity-50"
                   >
                     {saving ? 'Saving...' : 'Save Check-in'}
                   </button>

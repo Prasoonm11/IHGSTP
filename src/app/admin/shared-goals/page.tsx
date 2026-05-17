@@ -6,6 +6,7 @@ import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import type { SharedGoal, Department, Goal, Profile, UomType } from '@/lib/types'
 import { uomOptions } from '@/lib/constants'
+import { LoadingBar } from '@/components/ui/animations'
 
 const currentYear = new Date().getFullYear()
 
@@ -178,7 +179,7 @@ export default function AdminSharedGoalsPage() {
     return (
       <RoleLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <LoadingBar />
         </div>
       </RoleLayout>
     )

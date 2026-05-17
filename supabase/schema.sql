@@ -1,5 +1,4 @@
 -- AtomQuest Hackathon schema
-create extension if not exists pgcrypto;
 
 create table if not exists departments (
   id uuid primary key default gen_random_uuid(),
@@ -296,6 +295,23 @@ DO $$ BEGIN
       )
     )
     WITH CHECK (true);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname='public' AND tablename='goals' AND policyname='goals_employee_delete_draft'
+  ) THEN
+    CREATE POLICY goals_employee_delete_draft
+    ON public.goals
+    FOR DELETE TO authenticated
+    USING (
+      (auth.uid() = employee_id AND status = 'draft') OR EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = auth.uid() AND p.role in ('manager', 'admin')
+      )
+    );
   END IF;
 END $$;
 

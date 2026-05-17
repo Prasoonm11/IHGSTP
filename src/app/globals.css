@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --page-bg: #081225;
-  --card-bg: #102149;
+  --page-bg: #080615;
+  --card-bg: #101028;
   --muted: #a4b3d6;
-  --text: #e5ecff;
+  --text: #eef2ff;
 }
 
 @theme inline {
@@ -16,11 +16,26 @@
   box-sizing: border-box;
 }
 
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
 body {
   margin: 0;
-  background: radial-gradient(circle at 20% 15%, #1b3a73 0%, #081225 55%, #050b16 100%);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(139, 92, 246, 0.22), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(217, 70, 239, 0.16), transparent 28%),
+    linear-gradient(180deg, #0a0818 0%, #080615 48%, #05040c 100%);
   color: var(--text);
   font-family: var(--font-sans), sans-serif;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(168, 85, 247, 0.35);
+  color: #ffffff;
 }
 
 button,

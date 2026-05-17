@@ -14,7 +14,7 @@ const mono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'AtomQuest Goal Portal',
+  title: 'AlignHQ | Goal Setting and Tracking Portal',
   description: 'In-house goal setting and quarterly check-in platform'
 }
 

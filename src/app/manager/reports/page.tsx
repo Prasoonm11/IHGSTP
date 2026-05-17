@@ -5,6 +5,7 @@ import RoleLayout from '@/components/layout/role-layout'
 import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile, Goal, GoalUpdate, ThrustArea } from '@/lib/types'
+import { LoadingBar } from '@/components/ui/animations'
 
 const currentYear = new Date().getFullYear()
 const quarters = ['Q1', 'Q2', 'Q3', 'Q4'] as const
@@ -143,7 +144,7 @@ export default function ManagerReportsPage() {
     return (
       <RoleLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <LoadingBar />
         </div>
       </RoleLayout>
     )
@@ -151,7 +152,7 @@ export default function ManagerReportsPage() {
 
   return (
     <RoleLayout>
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto px-6">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-white">Team Reports</h1>
@@ -159,7 +160,7 @@ export default function ManagerReportsPage() {
           </div>
           <button
             onClick={exportToCSV}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:shadow-lg text-white rounded-lg font-medium transition-all"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -195,7 +196,7 @@ export default function ManagerReportsPage() {
           <select
             value={selectedEmployee}
             onChange={e => setSelectedEmployee(e.target.value)}
-            className="px-4 py-2 bg-[#0d1a36] border border-white/10 rounded-lg text-white"
+            className="px-4 py-2 bg-black/40 border border-white/10 rounded-lg text-white"
           >
             <option value="all">All Employees</option>
             {teamEmployees.map(emp => (
@@ -227,7 +228,7 @@ export default function ManagerReportsPage() {
                       <tr key={emp.id} className="border-b border-white/5">
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-medium">
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white text-sm font-medium">
                               {emp.first_name[0]}{emp.last_name[0]}
                             </div>
                             <div>
@@ -307,7 +308,7 @@ export default function ManagerReportsPage() {
                                   <p className="text-white">{update.actual_value ?? '-'}</p>
                                   <span className={`text-xs px-2 py-0.5 rounded ${
                                     update.status === 'completed' ? 'bg-green-600' :
-                                    update.status === 'on_track' ? 'bg-blue-600' : 'bg-slate-600'
+                                    update.status === 'on_track' ? 'bg-violet-600' : 'bg-slate-600'
                                   } text-white`}>
                                     {update.status.replace('_', ' ')}
                                   </span>
@@ -371,7 +372,7 @@ export default function ManagerReportsPage() {
                     </div>
                     <div className="h-2 bg-[#081225] rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-blue-500"
+                        className="h-full bg-violet-500"
                         style={{ width: `${percentage}%` }}
                       />
                     </div>

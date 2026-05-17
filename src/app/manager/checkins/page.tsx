@@ -5,6 +5,7 @@ import RoleLayout from '@/components/layout/role-layout'
 import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import type { Profile, Goal, GoalUpdate, ThrustArea, CheckinComment } from '@/lib/types'
+import { LoadingBar } from '@/components/ui/animations'
 
 const currentYear = new Date().getFullYear()
 const quarters = ['Q1', 'Q2', 'Q3', 'Q4'] as const
@@ -124,7 +125,7 @@ export default function ManagerCheckinsPage() {
     return (
       <RoleLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <LoadingBar />
         </div>
       </RoleLayout>
     )
@@ -156,8 +157,8 @@ export default function ManagerCheckinsPage() {
               onClick={() => setSelectedQuarter(q)}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${
                 selectedQuarter === q
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-[#0d1a36] text-slate-400 hover:text-white'
+                  ? 'bg-violet-600 text-white'
+                  : 'bg-black/40 text-violet-300/60 hover:text-violet-100'
               }`}
             >
               {q}
@@ -189,7 +190,7 @@ export default function ManagerCheckinsPage() {
                   return (
                     <div
                       key={emp.id}
-                      className={`bg-[#0d1a36] border rounded-xl p-4 cursor-pointer transition-colors ${
+                      className={`bg-black/40 border rounded-xl p-4 cursor-pointer transition-colors ${
                         selectedEmployee === emp.id
                           ? 'border-blue-500'
                           : 'border-white/10 hover:border-white/20'
@@ -198,7 +199,7 @@ export default function ManagerCheckinsPage() {
                     >
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-medium">
                             {emp.first_name[0]}{emp.last_name[0]}
                           </div>
                           <div>
@@ -247,7 +248,7 @@ export default function ManagerCheckinsPage() {
             )}
           </div>
 
-          <div className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
+          <div className="bg-black/40 border border-white/10 rounded-xl p-6">
             <h2 className="text-lg font-semibold text-white mb-4">
               {selectedEmployee
                 ? `Feedback - ${selectedQuarter}`
@@ -273,7 +274,7 @@ export default function ManagerCheckinsPage() {
                               </span>
                               <span className={`px-2 py-0.5 rounded text-xs ${
                                 update.status === 'completed' ? 'bg-green-600' :
-                                update.status === 'on_track' ? 'bg-blue-600' : 'bg-slate-600'
+                                update.status === 'on_track' ? 'bg-violet-600' : 'bg-slate-600'
                               } text-white`}>
                                 {update.status.replace('_', ' ')}
                               </span>
@@ -302,7 +303,7 @@ export default function ManagerCheckinsPage() {
                 <button
                   onClick={handleAddFeedback}
                   disabled={saving || !feedbackText.trim()}
-                  className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+                  className="w-full px-4 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:shadow-lg text-white rounded-lg font-medium transition-all disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save Feedback'}
                 </button>

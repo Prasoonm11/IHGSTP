@@ -5,6 +5,7 @@ import RoleLayout from '@/components/layout/role-layout'
 import { useAuth } from '@/components/auth-provider'
 import { createClient } from '@/lib/supabase/client'
 import type { Notification, Profile } from '@/lib/types'
+import { LoadingBar } from '@/components/ui/animations'
 
 export default function AdminNotificationsPage() {
   const { profile } = useAuth()
@@ -123,7 +124,7 @@ export default function AdminNotificationsPage() {
     return (
       <RoleLayout>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <LoadingBar />
         </div>
       </RoleLayout>
     )
