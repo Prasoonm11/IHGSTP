@@ -314,7 +314,7 @@ export default function AdminUsersPage() {
                           {user.role}
                         </span>
                       </td>
-                      <td className="p-4 text-white/70">{deptMap.get(user.department_id) || '-'}</td>
+                      <td className="p-4 text-white/70">{deptMap.get(user.department_id ?? '') || '-'}</td>
                       <td className="p-4 text-white/70">{manager ? `${manager.first_name} ${manager.last_name}` : '-'}</td>
                       <td className="p-4">
                         <span className={`text-xs font-semibold px-3 py-1 rounded-lg ${
