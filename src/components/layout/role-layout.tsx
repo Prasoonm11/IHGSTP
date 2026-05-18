@@ -54,6 +54,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
   const [profileMessage, setProfileMessage] = useState('')
   const [savingAvatar, setSavingAvatar] = useState(false)
   const [resettingPassword, setResettingPassword] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     if (!loading && !profile) {
@@ -127,6 +128,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
       if (event.key === 'Escape') {
         setShowProfileMenu(false)
         setShowProfileDetails(false)
+        setMobileMenuOpen(false)
       }
     }
 
@@ -138,6 +140,10 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
       document.removeEventListener('keydown', onEscape)
     }
   }, [])
+
+  useEffect(() => {
+    setMobileMenuOpen(false)
+  }, [pathname])
 
   const markAsRead = async (id: string) => {
     await supabase.from('notifications').update({ is_read: true }).eq('id', id)
@@ -222,9 +228,18 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #1a0033 0%, #2d1b4e 50%, #1a0033 100%)' }}>
       {/* Navbar */}
-      <nav className="h-16 border-b border-white/10 bg-black/30 backdrop-blur-lg px-6 flex items-center justify-between sticky top-0 z-50">
+      <nav className="h-16 border-b border-white/10 bg-black/30 backdrop-blur-lg px-4 sm:px-6 flex items-center justify-between sticky top-0 z-50">
         {/* Logo */}
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-4 sm:gap-8">
+          <button
+            onClick={() => setMobileMenuOpen(prev => !prev)}
+            className="md:hidden p-2 rounded-lg text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+            aria-label="Toggle menu"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
           <div className="flex items-center gap-2">
             <Image
               src="/favicon.ico"
@@ -240,7 +255,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
 
         {/* Right Side Icons */}
         <div className="flex items-center gap-4">
-          <div className="text-white/60 text-sm">
+          <div className="hidden sm:block text-white/60 text-sm">
             {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
           </div>
           <div className="relative">
@@ -257,7 +272,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
             </button>
 
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-80 bg-black/60 border border-white/10 rounded-lg shadow-xl z-50 backdrop-blur-md">
+              <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-black/60 border border-white/10 rounded-lg shadow-xl z-50 backdrop-blur-md">
                 <div className="p-3 border-b border-white/10">
                   <h3 className="text-sm font-medium text-white">Notifications</h3>
                 </div>
@@ -384,8 +399,16 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
 
       {/* Main Container */}
       <div className="flex flex-1">
+        {mobileMenuOpen && (
+          <button
+            onClick={() => setMobileMenuOpen(false)}
+            className="md:hidden fixed inset-0 top-16 z-30 bg-black/50"
+            aria-label="Close menu overlay"
+          />
+        )}
+
         {/* Sidebar - Fixed */}
-        <aside className="w-64 fixed h-[calc(100vh-64px)] top-16 border-r border-white/10 bg-black/20 flex flex-col overflow-hidden">
+        <aside className={`w-64 fixed h-[calc(100vh-64px)] top-16 left-0 z-40 border-r border-white/10 bg-black/20 flex flex-col overflow-hidden transition-transform duration-300 md:translate-x-0 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           {/* Menu */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             <div className="text-xs uppercase tracking-wider text-white/40 px-4 py-3 font-semibold">Menu</div>
@@ -393,6 +416,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => setMobileMenuOpen(false)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
                   pathname === item.href
                     ? 'bg-linear-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg'
@@ -416,7 +440,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
         </aside>
 
         {/* Main Content - Offset for fixed sidebar */}
-        <main className="flex-1 ml-64 overflow-auto flex flex-col">
+        <main className="flex-1 md:ml-64 overflow-auto flex flex-col min-w-0">
           <div className="flex-1">
             {children}
           </div>
