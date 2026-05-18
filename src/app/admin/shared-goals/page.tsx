@@ -142,16 +142,11 @@ export default function AdminSharedGoalsPage() {
 
   const handlePushToEmployees = async (sharedGoal: Goal) => {
     const departmentId = decodeSharedGoalDepartmentId(sharedGoal.description)
-
-    if (!departmentId) {
-      alert('Please select a department first')
-      return
-    }
-
-    const deptEmployees = profiles.filter(p =>
-      p.department_id === departmentId &&
-      p.role === 'employee'
-    )
+    const deptEmployees = profiles.filter(p => {
+      if (p.role !== 'employee') return false
+      if (!departmentId) return true
+      return p.department_id === departmentId
+    })
 
     if (deptEmployees.length === 0) {
       alert('No employees found in this department')
@@ -266,9 +261,11 @@ export default function AdminSharedGoalsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {goalsByDept.map(sg => {
               const departmentId = decodeSharedGoalDepartmentId(sg.description)
-              const deptEmployees = profiles.filter(p =>
-                p.department_id === departmentId && p.role === 'employee'
-              ).length
+              const deptEmployees = profiles.filter(p => {
+                if (p.role !== 'employee') return false
+                if (!departmentId) return true
+                return p.department_id === departmentId
+              }).length
 
               return (
                 <div key={sg.id} className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
@@ -312,7 +309,7 @@ export default function AdminSharedGoalsPage() {
 
                   <button
                     onClick={() => handlePushToEmployees(sg)}
-                    disabled={saving || !departmentId}
+                    disabled={saving}
                     className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
                   >
                     {saving ? 'Pushing...' : 'Push to Employees'}

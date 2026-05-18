@@ -1,0 +1,58 @@
+Goal-Setting App — Architecture & Hosting (brief)
+
+ASCII Diagram
+
+  [User Browser]
+        |
+        v
+  [Vercel CDN & Next.js App]
+    - Hosts the frontend (Next.js + React + TypeScript)
+    - Server components & API routes run on Vercel (edge/serverless)
+    - Styling: Tailwind CSS; animations: Framer Motion
+    - Build-time public env vars: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
+        |
+        v
+  [Supabase Platform]
+    - PostgreSQL DB (schemas + RLS policies)
+    - Auth (supabase auth) for sign-in flows
+    - Storage buckets (e.g., avatars)
+    - Service Role Key used server-side for privileged operations
+    - Key tables: profiles, goals, checkins, notifications (jsonb payloads)
+        |
+        v
+  [Dev / CI/CD]
+    - Local development: .env.local with public and service keys
+    - Push to Git -> Vercel auto-deploys (Preview/Production)
+    - Vercel environment variables must be set for Production builds
+
+Key Technology Choices & Rationale
+
+- Next.js (React + TypeScript): server and client rendering, good for fast UI and SEO.
+- Vercel: native Next.js hosting with automatic deployments and environment variable management.
+- Supabase: managed Postgres + Auth + Storage, simplifies backend and real-time features.
+- Tailwind CSS: fast, consistent utility-based styling across pages.
+
+Security & Config Notes
+
+- Public keys (NEXT_PUBLIC_*) are safe for client usage but limited (anon key).
+- `SUPABASE_SERVICE_ROLE_KEY` must never be exposed to the browser; use it only in server-only code or Vercel server environment vars.
+- Row Level Security (RLS) secures per-user access; policies control SELECT/INSERT/UPDATE rights.
+- Ensure `notifications` table exists in production schema and RLS policies permit reads for owners and admins.
+
+Deployment Checklist
+
+- Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to Vercel (Production & Preview if needed).
+- Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel as a secret (server-side only).
+- Migrate `supabase/schema.sql` (including `notifications` table) to the Supabase production DB.
+- Redeploy on Vercel after env vars are set and migrations applied.
+
+Contact & Reference
+
+- Repo root: goal-setting/
+- Important files:
+  - [supabase/schema.sql](supabase/schema.sql)
+  - [src/lib/supabase/client.ts](src/lib/supabase/client.ts)
+  - [src/lib/types.ts](src/lib/types.ts)
+  - [src/app/employee/goals/page.tsx](src/app/employee/goals/page.tsx)
+
+End of file.

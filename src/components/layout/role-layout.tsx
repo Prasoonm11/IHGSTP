@@ -416,8 +416,13 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
         </aside>
 
         {/* Main Content - Offset for fixed sidebar */}
-        <main className="flex-1 ml-64 overflow-auto">
-          {children}
+        <main className="flex-1 ml-64 overflow-auto flex flex-col">
+          <div className="flex-1">
+            {children}
+          </div>
+          <footer className="mt-auto border-t border-white/10 bg-black/20 px-6 py-4 text-center text-xs text-white/40">
+            © 2026 AlignHQ. All rights reserved.
+          </footer>
         </main>
       </div>
     </div>

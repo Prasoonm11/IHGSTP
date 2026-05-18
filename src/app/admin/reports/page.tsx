@@ -117,8 +117,13 @@ export default function AdminReportsPage() {
     const draft = yearGoals.filter(goal => goal.status === 'draft').length
 
     const employees = profiles.filter(p => p.role === 'employee')
-    const employeesWithGoals = new Set(yearGoals.map(goal => goal.employee_id)).size
-    const orgCoverage = employees.length > 0 ? Math.round((employeesWithGoals / employees.length) * 100) : 0
+    const employeeIds = new Set(employees.map(employee => employee.id))
+    const employeesWithGoals = new Set(
+      yearGoals
+        .filter(goal => employeeIds.has(goal.employee_id))
+        .map(goal => goal.employee_id)
+    ).size
+    const orgCoverage = employees.length > 0 ? Math.min(100, Math.round((employeesWithGoals / employees.length) * 100)) : 0
     const avgProgress = avg(yearUpdates.map(update => update.completion_percent))
 
     return { totalGoals, approved, submitted, draft, employeesWithGoals, orgCoverage, avgProgress }

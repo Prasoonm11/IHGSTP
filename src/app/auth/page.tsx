@@ -47,6 +47,43 @@ const initialFormData: FormData = {
   manager_id: '',
 }
 
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+}
+
+function getLoginValidationError(formData: FormData) {
+  if (!formData.email.trim()) return 'Please enter your email address.'
+  if (!isValidEmail(formData.email.trim())) return 'Please enter a valid email address.'
+  if (!formData.password.trim()) return 'Please enter your password.'
+  return null
+}
+
+function getRegisterValidationError(formData: FormData) {
+  if (!formData.first_name.trim()) return 'Please fill required field: First name.'
+  if (!formData.last_name.trim()) return 'Please fill required field: Last name.'
+  if (!formData.role) return 'Please select a role.'
+  if (formData.role !== 'admin' && !formData.department_id) return 'Please select a department.'
+  if (!formData.email.trim()) return 'Please fill required field: Email.'
+  if (!isValidEmail(formData.email.trim())) return 'Please enter a valid email address.'
+  if (!formData.password.trim()) return 'Please fill required field: Password.'
+  if (formData.password.length < 6) return 'Password must be at least 6 characters.'
+  return null
+}
+
+function getFriendlyAuthError(error: unknown, mode: AuthMode) {
+  const message = error instanceof Error ? error.message : (mode === 'login' ? 'Failed to sign in' : 'Failed to create account')
+
+  if (/invalid login credentials/i.test(message)) return 'Invalid email or password.'
+  if (/email not confirmed/i.test(message)) return 'Please verify your email first, then sign in.'
+  if (/user already registered/i.test(message)) return 'This email is already registered. Please sign in instead.'
+  if (/password should be at least/i.test(message)) return 'Password is too weak. Use at least 6 characters.'
+  if (/invalid email/i.test(message)) return 'Please enter a valid email address.'
+  if (/null value in column|not-null|required/i.test(message)) return 'Please fill all required fields.'
+  if (/row-level security|permission denied/i.test(message)) return 'You do not have permission to perform this action.'
+
+  return message
+}
+
 const featureCards = [
   {
     icon: BarChart3,
@@ -244,11 +281,18 @@ export default function AuthPage() {
     resetFeedback()
     setSubmitting(true)
 
-    const result = await signIn(formData.email, formData.password)
+    const validationError = getLoginValidationError(formData)
+    if (validationError) {
+      setError(validationError)
+      setSubmitting(false)
+      return
+    }
+
+    const result = await signIn(formData.email.trim().toLowerCase(), formData.password)
     setSubmitting(false)
 
     if (result.error) {
-      setError(result.error)
+      setError(getFriendlyAuthError(new Error(result.error), 'login'))
       return
     }
 
@@ -266,14 +310,15 @@ export default function AuthPage() {
     setSubmitting(true)
 
     try {
-      if (!formData.role) {
-        setError('Please select a role')
+      const validationError = getRegisterValidationError(formData)
+      if (validationError) {
+        setError(validationError)
         setSubmitting(false)
         return
       }
 
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
+        email: formData.email.trim().toLowerCase(),
         password: formData.password,
       })
 
@@ -282,9 +327,9 @@ export default function AuthPage() {
 
       const { error: profileError } = await supabase.from('profiles').insert({
         id: authData.user.id,
-        email: formData.email,
-        first_name: formData.first_name,
-        last_name: formData.last_name,
+        email: formData.email.trim().toLowerCase(),
+        first_name: formData.first_name.trim(),
+        last_name: formData.last_name.trim(),
         role: formData.role,
         department_id: formData.department_id || null,
         manager_id: formData.manager_id || null,
@@ -302,7 +347,7 @@ export default function AuthPage() {
         }))
       }, 1800)
     } catch (registerError: unknown) {
-      setError(registerError instanceof Error ? registerError.message : 'Failed to create account')
+      setError(getFriendlyAuthError(registerError, 'register'))
     } finally {
       setSubmitting(false)
     }

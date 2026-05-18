@@ -44,6 +44,50 @@ function decodeSharedGoalDescription(description: string | null) {
   return description.split('\n').slice(1).join('\n')
 }
 
+function getSaveValidationError(form: GoalFormData) {
+  if (!form.title.trim()) return 'Please fill required field: Goal Name.'
+  if (!form.thrust_area_id) return 'Please fill required field: Thrust Area.'
+  if (!form.uom_type) return 'Please fill required field: UoM Type.'
+
+  const weightage = Number(form.weightage)
+  if (!form.weightage.trim() || Number.isNaN(weightage)) {
+    return 'Please enter a valid Weightage.'
+  }
+
+  if (weightage <= 0 || weightage > 100) {
+    return 'Weightage must be between 1 and 100.'
+  }
+
+  if (form.uom_type === 'timeline') {
+    if (!form.target_date) return 'Please fill required field: Timeline / Deadline.'
+    return null
+  }
+
+  if (!form.target_value.trim()) return 'Please fill required field: Target Value.'
+  const targetValue = Number(form.target_value)
+  if (Number.isNaN(targetValue)) return 'Please enter a valid numeric Target Value.'
+
+  return null
+}
+
+function getFriendlySaveError(err: unknown) {
+  const message = err instanceof Error ? err.message : 'Failed to save'
+
+  if (/null value in column|not-null|required/i.test(message)) {
+    return 'Please fill all required fields before saving.'
+  }
+
+  if (/invalid input syntax|numeric|double precision|integer/i.test(message)) {
+    return 'Please enter valid numeric values for Target Value and Weightage.'
+  }
+
+  if (/row-level security|permission denied/i.test(message)) {
+    return 'You do not have permission to save this goal.'
+  }
+
+  return message
+}
+
 function AnimatedInput({
   label,
   value,
@@ -217,10 +261,15 @@ export default function EmployeeGoalsPage() {
     setSaving(true)
 
     try {
+      const validationError = getSaveValidationError(form)
+      if (validationError) {
+        throw new Error(validationError)
+      }
+
       const goalData = {
         employee_id: profile.id,
         thrust_area_id: form.thrust_area_id,
-        title: form.title,
+        title: form.title.trim(),
         description: form.description || null,
         uom_type: form.uom_type,
         target_value: form.target_value ? Number(form.target_value) : null,
@@ -246,7 +295,7 @@ export default function EmployeeGoalsPage() {
       setSuccess('Goal saved!')
       await fetchData()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      setError(getFriendlySaveError(err))
     } finally {
       setSaving(false)
       setTimeout(() => setSuccess(''), 3000)
@@ -309,6 +358,7 @@ export default function EmployeeGoalsPage() {
 
     setSaving(true)
     try {
+      const submittedCount = draftGoals.length
       const { error: submitError } = await supabase
         .from('goals')
         .update({ status: 'submitted' as GoalStatus })
@@ -317,6 +367,21 @@ export default function EmployeeGoalsPage() {
         .eq('status', 'draft')
 
       if (submitError) throw submitError
+
+      if (profile.manager_id) {
+        const { error: notificationError } = await supabase.from('notifications').insert({
+          user_id: profile.manager_id,
+          type: 'goal_submitted',
+          payload: {
+            message: `${profile.first_name} ${profile.last_name} submitted ${submittedCount} goal${submittedCount === 1 ? '' : 's'} for approval.`,
+            employee_id: profile.id,
+            cycle_year: currentYear,
+            submitted_count: submittedCount,
+          },
+        })
+
+        if (notificationError) throw notificationError
+      }
 
       setSuccess('Draft goals submitted successfully!')
       await fetchData()
@@ -418,47 +483,6 @@ export default function EmployeeGoalsPage() {
             )}
           </div>
 
-          {/* Shared Goals */}
-          <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 min-h-[320px] flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-white font-semibold">Shared KPIs</h3>
-                <p className="text-white/50 text-sm mt-1">Department goals pushed by admins and visible to you</p>
-              </div>
-              <span className="text-xs text-cyan-300 bg-cyan-500/10 px-2 py-1 rounded">
-                {sharedGoals.length} active
-              </span>
-            </div>
-
-            <div className="flex-1">
-              {departmentSharedTemplates.length === 0 ? (
-                <p className="text-white/40 text-sm">No shared KPIs available for your department yet.</p>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {departmentSharedTemplates.map(goal => (
-                    <GoalCard
-                      key={goal.id}
-                      goal={goal}
-                      thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''}
-                      sharedBadge
-                    />
-                  ))}
-                </div>
-              )}
-              {departmentSharedTemplates.some(goal => decodeSharedGoalDescription(goal.description)) ? (
-                <div className="mt-4 space-y-2">
-                  {departmentSharedTemplates.map(goal => {
-                    const description = decodeSharedGoalDescription(goal.description)
-                    return description ? (
-                      <p key={goal.id} className="text-xs text-white/45">
-                        {goal.title}: {description}
-                      </p>
-                    ) : null
-                  })}
-                </div>
-              ) : null}
-            </div>
-          </div>
         </div>
 
         {/* Goal Sections */}
@@ -482,6 +506,48 @@ export default function EmployeeGoalsPage() {
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {approvedGoals.length === 0 ? <p className="text-white/40 text-sm text-center py-4">No approved</p> : approvedGoals.map(goal => <GoalCard key={goal.id} goal={goal} thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''} sharedBadge={goal.is_shared} />)}
             </div>
+          </div>
+        </div>
+
+        {/* Shared Goals */}
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 min-h-[320px] flex flex-col">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-white font-semibold">Shared KPIs</h3>
+              <p className="text-white/50 text-sm mt-1">Department goals pushed by admins and visible to you</p>
+            </div>
+            <span className="text-xs text-cyan-300 bg-cyan-500/10 px-2 py-1 rounded">
+              {sharedGoals.length} active
+            </span>
+          </div>
+
+          <div className="flex-1">
+            {departmentSharedTemplates.length === 0 ? (
+              <p className="text-white/40 text-sm">No shared KPIs available for your department yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {departmentSharedTemplates.map(goal => (
+                  <GoalCard
+                    key={goal.id}
+                    goal={goal}
+                    thrustAreaName={thrustAreaMap.get(goal.thrust_area_id) || ''}
+                    sharedBadge
+                  />
+                ))}
+              </div>
+            )}
+            {departmentSharedTemplates.some(goal => decodeSharedGoalDescription(goal.description)) ? (
+              <div className="mt-4 space-y-2">
+                {departmentSharedTemplates.map(goal => {
+                  const description = decodeSharedGoalDescription(goal.description)
+                  return description ? (
+                    <p key={goal.id} className="text-xs text-white/45">
+                      {goal.title}: {description}
+                    </p>
+                  ) : null
+                })}
+              </div>
+            ) : null}
           </div>
         </div>
 

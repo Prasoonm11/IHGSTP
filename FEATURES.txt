@@ -1,0 +1,116 @@
+Goal-Setting App — Features Inventory
+
+Purpose
+
+This file lists all features, grouped by area (dashboards, core flows, integrations, utilities), and annotates each feature with a size indicator (Small / Medium / Large) describing relative scope and complexity.
+
+Legend
+- Small: Single page or small UI component, minimal backend logic (CRUD). ~1-2 components.
+- Medium: Multi-part UI, some server/API logic, non-trivial state handling. ~3-6 components.
+- Large: Cross-cutting feature, multiple pages, background jobs, RLS and/or integrations. ~6+ components.
+
+1) Authentication & Profiles
+- Sign-up / Sign-in (Supabase Auth) — Small
+  - Email/password, session handling, redirect to role-aware layout.
+- Profile page & avatars (Storage bucket) — Small
+  - Profile fields, avatar upload to `avatars` bucket.
+- Role assignment & permissions — Medium
+  - `admin`, `manager`, `employee` roles; used by RLS and UI gating.
+
+2) Core Data Models
+- Profiles table (users) — Small
+- Goals table (user goals & templates) — Large
+  - Create/Edit/Delete goals, shared templates, thrust areas, recurrence.
+- Checkins table (progress entries) — Medium
+  - Regular check-ins, comments, attachments.
+- Cycles table (goal cycles) — Medium
+  - Start/end dates, status, gating for goal visibility.
+- Notifications table (jsonb payloads) — Medium
+  - Insert/read/update; used by role-layout and admin notifications.
+- Escalations / Rules — Medium
+  - Automatic or manual escalation rules triggering notifications.
+
+3) Dashboards & Pages (by role)
+- Admin Dashboards
+  - User Management — Large
+    - Directory, role/department assignment, search, bulk actions, "Total Users" metrics.
+  - Cycles / Goal Cycle Management — Medium
+    - Create/manage cycles, status dashboards, timeline view.
+  - Escalations Management — Medium
+    - Configure escalation rules, view triggers, run manual escalations.
+  - Notifications Console — Medium
+    - Compose system notifications, target users/departments, view history.
+  - Reports & Analytics (Admin Reports) — Large
+    - Aggregations across goals, department KPIs, export capability.
+  - Shared Goals / Department Templates — Medium
+    - Manage shared KPIs pushed to employees.
+
+- Manager Dashboards
+  - Team Overview (Team page) — Large
+    - Member list, aggregated goal counts, progress charts, quarterly view.
+  - Approvals Inbox — Medium
+    - Review/approve/reject submitted goals, send rejection reasons (creates notifications).
+  - Manager Reports — Medium
+    - Team-level KPIs, trend visualizations.
+
+- Employee Dashboards
+  - My Goals (Employee Goals page) — Medium
+    - List of user goals, create/edit, quick actions, goal status cards.
+  - Checkins (Employee Checkins) — Small/Medium
+    - Add check-ins, view history, show progress bars.
+  - Progress Overview (Employee Progress) — Small
+    - Aggregate progress, recent activity, next actions.
+
+4) Shared UI & Components
+- Layouts & Role-aware Layout (`role-layout`) — Small
+  - Shared nav, notification bell, unread counts, role-based menus.
+- UI Primitives (Cards, PageHeader, AnimatedNumber) — Small
+  - Reusable visual components and gradients.
+- Animated Backgrounds and micro-animations (Framer Motion) — Small
+
+5) API Routes & Server Logic
+- `src/app/api/*` routes — Small/Medium
+  - Bootstrap data endpoints (departments), admin actions, server-side supabase use.
+- Server-side supabase operations (service role usage) — Medium
+  - Privileged tasks run on server (migrations, admin mass updates).
+
+6) Integrations & Platform
+- Supabase (Postgres + Auth + Storage) — Large (platform)
+  - RLS policies for profiles, goals, notifications.
+  - Storage buckets for avatars and attachments.
+- Vercel (Hosting) — Medium (platform)
+  - Next.js hosting, env vars management, CI/CD auto-deploys.
+
+7) Security & Config
+- Environment variables
+  - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (client)
+  - `SUPABASE_SERVICE_ROLE_KEY` (server only)
+- RLS (Row Level Security) policies — Large
+  - Per-table policies to allow only owner/admin queries.
+
+8) Admin Tools & Maintenance
+- Schema SQL (`supabase/schema.sql`) — Small/Medium
+  - Table creation, enums/check constraints, RLS policies.
+- Seed/Bootstrap scripts (departments, sample data) — Small
+- Migrations process (apply schema to production) — Medium
+
+9) Observability & Testing
+- Local dev `.env.local` support — Small
+- Unit/Integration tests (if present) — Medium
+- Logging & error handling patterns — Small
+
+10) UX/Accessibility & UX Utilities
+- Responsive design (Tailwind responsive utilities) — Small
+- Keyboard accessible components & focus management — Small
+
+11) Miscellaneous Features
+- Quick Actions section (per-page) — Small
+  - One-click actions like "Add new goal".
+- Shared KPIs listing & subscription — Medium
+- Export CSV / Reporting endpoints — Medium
+
+Notes & Next Steps
+- Confirm any other role-specific dashboards to add (e.g., HR view).
+- If you want, I can also generate a Markdown README section or a CSV inventory for product managers.
+
+End of file.

@@ -256,26 +256,6 @@ export default function AdminEscalationsPage() {
           </div>
         </div>
 
-        <div className="mt-6 bg-[#0d1a36] border border-white/10 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">How Escalations Work</h3>
-          <div className="flex items-center justify-center gap-4">
-            {['Employee', 'Manager', 'HR'].map((role, i) => (
-              <div key={role} className="flex items-center">
-                <div className={`px-4 py-2 rounded-lg ${
-                  i === 0 ? 'bg-blue-600' : i === 1 ? 'bg-purple-600' : 'bg-red-600'
-                } text-white font-medium`}>
-                  {role}
-                </div>
-                {i < 2 && (
-                  <div className="mx-2 text-slate-500">→</div>
-                )}
-              </div>
-            ))}
-          </div>
-          <p className="text-sm text-slate-400 mt-4 text-center">
-            Escalations follow a cascading chain. If the issue isn't resolved at one level, it automatically escalates to the next.
-          </p>
-        </div>
       </div>
     </RoleLayout>
   )
