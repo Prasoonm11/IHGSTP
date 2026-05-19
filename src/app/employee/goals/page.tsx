@@ -11,6 +11,27 @@ import { getTimeGreeting, formatISTDate } from '@/lib/time'
 
 const currentYear = new Date().getFullYear()
 
+const goalCreationWindow = {
+  startMonth: 4,
+  startDay: 1,
+  endMonth: 5,
+  endDay: 30,
+}
+
+function isGoalCreationWindowOpen(date = new Date()) {
+  const month = date.getMonth()
+  const day = date.getDate()
+
+  if (month < goalCreationWindow.startMonth || month > goalCreationWindow.endMonth) return false
+  if (month === goalCreationWindow.startMonth && day < goalCreationWindow.startDay) return false
+  if (month === goalCreationWindow.endMonth && day > goalCreationWindow.endDay) return false
+  return true
+}
+
+function getGoalCreationWindowLabel() {
+  return '1 May - 30 June'
+}
+
 interface GoalFormData {
   id?: string
   title: string
@@ -179,12 +200,14 @@ function GoalCard({
             {goal.locked && <span className="text-yellow-400 text-xs">🔒</span>}
           </div>
         </div>
-        {goal.status === 'draft' && !goal.locked && (
+        {(((goal.status === 'draft' && !goal.locked) || goal.is_shared) && onEdit) ? (
           <div className="flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button onClick={() => onEdit?.()} className="p-1 rounded bg-white/10 hover:bg-violet-500/30 text-white/70">✏️</button>
-            <button onClick={() => onDelete?.()} className="p-1 rounded bg-white/10 hover:bg-rose-500/30 text-white/70">🗑️</button>
+            {!goal.is_shared && onDelete ? (
+              <button onClick={() => onDelete?.()} className="p-1 rounded bg-white/10 hover:bg-rose-500/30 text-white/70">🗑️</button>
+            ) : null}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
@@ -202,8 +225,12 @@ export default function EmployeeGoalsPage() {
   const [form, setForm] = useState<GoalFormData>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [showSharedWeightageForm, setShowSharedWeightageForm] = useState(false)
+  const [editingSharedGoal, setEditingSharedGoal] = useState<GoalWithUpdates | null>(null)
+  const [sharedWeightage, setSharedWeightage] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const canCreateGoals = isGoalCreationWindowOpen()
 
   const myGoals = useMemo(() => goals.filter(g => g.employee_id === profile?.id), [goals, profile])
   const sharedGoals = useMemo(() => myGoals.filter(g => g.is_shared), [myGoals])
@@ -261,6 +288,10 @@ export default function EmployeeGoalsPage() {
     setSaving(true)
 
     try {
+      if (!editingId && !canCreateGoals) {
+        throw new Error(`Goals can only be added between ${getGoalCreationWindowLabel()}.`)
+      }
+
       const validationError = getSaveValidationError(form)
       if (validationError) {
         throw new Error(validationError)
@@ -303,6 +334,13 @@ export default function EmployeeGoalsPage() {
   }
 
   const handleEdit = (goal: GoalWithUpdates) => {
+    if (goal.is_shared) {
+      setEditingSharedGoal(goal)
+      setSharedWeightage(goal.weightage.toString())
+      setShowSharedWeightageForm(true)
+      return
+    }
+
     if (goal.locked || goal.status !== 'draft') return
     setEditingId(goal.id)
     setForm({
@@ -315,6 +353,39 @@ export default function EmployeeGoalsPage() {
       weightage: goal.weightage.toString(),
     })
     setShowForm(true)
+  }
+
+  const handleSaveSharedWeightage = async () => {
+    if (!profile || !editingSharedGoal) return
+
+    const weightage = Number(sharedWeightage)
+    if (Number.isNaN(weightage) || weightage < 10 || weightage > 100) {
+      setError('Please enter a valid shared KPI weightage between 10 and 100.')
+      return
+    }
+
+    setError('')
+    setSaving(true)
+
+    try {
+      const { error: updateError } = await supabase
+        .from('goals')
+        .update({ weightage })
+        .eq('id', editingSharedGoal.id)
+
+      if (updateError) throw updateError
+
+      setSuccess('Shared KPI weightage updated!')
+      setShowSharedWeightageForm(false)
+      setEditingSharedGoal(null)
+      setSharedWeightage('')
+      await fetchData()
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to update shared KPI weightage')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -458,9 +529,20 @@ export default function EmployeeGoalsPage() {
         <div className="space-y-4">
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 flex flex-col">
             <h3 className="text-white font-semibold mb-4">Quick Action</h3>
-            <button onClick={() => { setForm(emptyForm); setEditingId(null); setShowForm(true) }} className="w-full py-3 rounded-lg bg-linear-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:shadow-lg transition-all">
+            <button
+              onClick={() => {
+                setForm(emptyForm)
+                setEditingId(null)
+                setShowForm(true)
+              }}
+              disabled={!canCreateGoals}
+              className="w-full py-3 rounded-lg bg-linear-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               + Add new goal
             </button>
+            <p className="text-xs text-white/50 mt-3">
+              Goals can be added from {getGoalCreationWindowLabel()}.
+            </p>
           </div>
 
           <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6">
@@ -510,7 +592,7 @@ export default function EmployeeGoalsPage() {
         </div>
 
         {/* Shared Goals */}
-        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 min-h-[320px] flex flex-col">
+        <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 min-h-80 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-white font-semibold">Shared KPIs</h3>
@@ -558,6 +640,12 @@ export default function EmployeeGoalsPage() {
               <h2 className="text-2xl font-bold text-white mb-6">{editingId ? 'Edit Goal' : 'Create New Goal'}</h2>
 
               {error && <div className="mb-4 p-3 bg-rose-500/20 border border-rose-500/50 rounded-lg text-rose-300 text-sm">{error}</div>}
+
+              {!editingId && !canCreateGoals && (
+                <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg text-amber-200 text-sm">
+                  New goals are only allowed between {getGoalCreationWindowLabel()}.
+                </div>
+              )}
 
               <div className="space-y-4">
                 <div>
@@ -624,7 +712,55 @@ export default function EmployeeGoalsPage() {
 
                 <div className="flex gap-3 pt-4">
                   <button onClick={() => setShowForm(false)} className="flex-1 px-4 py-3 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-all font-medium">Cancel</button>
-                  <button onClick={handleSave} disabled={saving} className="flex-1 px-4 py-3 rounded-lg bg-linear-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+                  <button onClick={handleSave} disabled={saving || (!editingId && !canCreateGoals)} className="flex-1 px-4 py-3 rounded-lg bg-linear-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSharedWeightageForm && editingSharedGoal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-40 p-4">
+            <div className="bg-black/80 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+              <h2 className="text-2xl font-bold text-white mb-2">Edit Shared KPI Weightage</h2>
+              <p className="text-white/50 text-sm mb-6">Title and target stay read-only for shared KPIs.</p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm text-white/70">Goal</label>
+                  <p className="mt-1 text-white font-medium">{editingSharedGoal.title}</p>
+                </div>
+
+                <div>
+                  <label className="text-sm text-white/70">Weightage (%)</label>
+                  <input
+                    type="number"
+                    min="10"
+                    max="100"
+                    value={sharedWeightage}
+                    onChange={e => setSharedWeightage(e.target.value)}
+                    className="w-full mt-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-white/30 focus:border-violet-500/50 outline-none"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowSharedWeightageForm(false)
+                      setEditingSharedGoal(null)
+                      setSharedWeightage('')
+                    }}
+                    className="flex-1 px-4 py-3 rounded-lg border border-white/10 text-white hover:bg-white/5 transition-all font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveSharedWeightage}
+                    disabled={saving}
+                    className="flex-1 px-4 py-3 rounded-lg bg-linear-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:shadow-lg transition-all disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Save Weightage'}
+                  </button>
                 </div>
               </div>
             </div>

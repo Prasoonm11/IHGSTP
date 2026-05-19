@@ -246,8 +246,8 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
               alt="AlignHQ Logo"
               width={36}
               height={36}
-              className="rounded-lg"
-            />
+              className="rounded-lg" />
+          {/* profile details modal moved below nav for proper centering */}
             <span className="text-lg font-bold text-white">AlignHQ</span>
           </div>
 
@@ -317,7 +317,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
               )}
             </button>
 
-            {showProfileMenu && (
+            {showProfileMenu && !showProfileDetails && (
               <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-white/10 bg-black/75 backdrop-blur-xl shadow-2xl overflow-hidden z-50">
                 <div className="p-4 border-b border-white/10">
                   <div className="flex items-center gap-3">
@@ -340,7 +340,10 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
 
                 <div className="p-2 space-y-1">
                   <button
-                    onClick={() => setShowProfileDetails(prev => !prev)}
+                    onClick={() => {
+                      setShowProfileDetails(true)
+                      setShowProfileMenu(false)
+                    }}
                     className="w-full text-left px-3 py-2 rounded-lg text-sm text-white/80 hover:bg-white/5 hover:text-white transition-colors"
                   >
                     View details
@@ -363,27 +366,11 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
                     onClick={signOut}
                     className="w-full text-left px-3 py-2 rounded-lg text-sm text-rose-300 hover:bg-rose-500/10 hover:text-rose-200 transition-colors"
                   >
-                    Sign out
+                    Logout
                   </button>
                 </div>
 
-                {showProfileDetails && (
-                  <div className="border-t border-white/10 p-4 text-sm text-white/75 space-y-2">
-                    <div className="flex justify-between gap-4">
-                      <span className="text-white/45">Role</span>
-                      <span className="capitalize">{profile.role}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-white/45">Department</span>
-                      <span className="truncate">{departmentName || 'Not set'}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-white/45">User ID</span>
-                      <span className="truncate font-mono text-xs">{profile.id.slice(0, 8)}...</span>
-                    </div>
-                    <p className="text-xs text-white/40 pt-1">Profile photo is stored in Supabase Storage.</p>
-                  </div>
-                )}
+                {/* Profile details moved to modal for clarity */}
               </div>
             )}
             <input
@@ -396,6 +383,52 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
           </div>
         </div>
       </nav>
+
+      {showProfileDetails && (
+        <div className="fixed inset-0 z-9999 flex items-center justify-center">
+          <div
+            className="fixed inset-0 bg-black/50 z-9998"
+            onClick={() => setShowProfileDetails(false)}
+          />
+          <div className="relative bg-black/80 border border-white/10 rounded-2xl w-11/12 max-w-md p-6 z-9999">
+            <button
+              onClick={() => setShowProfileDetails(false)}
+              className="absolute top-3 right-3 text-white/70 hover:text-white"
+              aria-label="Close profile details"
+            >
+              ✕
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-full bg-linear-to-r from-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-semibold overflow-hidden">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Profile photo" className="h-full w-full object-cover" />
+                ) : (
+                  <span>{profile.first_name[0]}{profile.last_name[0]}</span>
+                )}
+              </div>
+              <div>
+                <p className="text-white font-medium">{profile.first_name} {profile.last_name}</p>
+                <p className="text-xs text-violet-300/60">{profile.email}</p>
+              </div>
+            </div>
+
+            <div className="text-sm text-white/75 space-y-2">
+              <div className="flex justify-between gap-4">
+                <span className="text-white/45">Role</span>
+                <span className="capitalize">{profile.role}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-white/45">Department</span>
+                <span className="truncate">{departmentName || 'Not set'}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-white/45">User ID</span>
+                <span className="truncate font-mono text-xs">{profile.id.slice(0, 8)}...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Container */}
       <div className="flex flex-1">

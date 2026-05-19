@@ -135,6 +135,40 @@ create trigger trg_audit_locked_goal
 after update on goals
 for each row execute function log_goal_changes();
 
+create or replace function prevent_shared_goal_mutations()
+returns trigger as $$
+begin
+  if old.is_shared and exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.role in ('employee', 'manager')
+  ) then
+    if new.employee_id is distinct from old.employee_id
+      or new.thrust_area_id is distinct from old.thrust_area_id
+      or new.title is distinct from old.title
+      or new.description is distinct from old.description
+      or new.uom_type is distinct from old.uom_type
+      or new.target_value is distinct from old.target_value
+      or new.target_date is distinct from old.target_date
+      or new.status is distinct from old.status
+      or new.cycle_year is distinct from old.cycle_year
+      or new.locked is distinct from old.locked
+      or new.is_shared is distinct from old.is_shared
+      or new.primary_goal_id is distinct from old.primary_goal_id then
+      raise exception 'shared goals can only be updated by weightage for employee and manager roles';
+    end if;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_shared_goal_weightage_only on goals;
+create trigger trg_shared_goal_weightage_only
+before update on goals
+for each row execute function prevent_shared_goal_mutations();
+
 alter table departments enable row level security;
 alter table thrust_areas enable row level security;
 alter table profiles enable row level security;
@@ -288,15 +322,22 @@ DO $$ BEGIN
 END $$;
 
 DO $$ BEGIN
-  IF NOT EXISTS (
+  IF EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname='public' AND tablename='goals' AND policyname='goals_employee_insert'
   ) THEN
-    CREATE POLICY goals_employee_insert
-    ON public.goals
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid() = employee_id);
+    DROP POLICY goals_employee_insert ON public.goals;
   END IF;
+  
+  CREATE POLICY goals_employee_insert
+  ON public.goals
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = employee_id OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.role = 'admin'
+    )
+  );
 END $$;
 
 DO $$ BEGIN
@@ -326,9 +367,12 @@ DO $$ BEGIN
     ON public.goals
     FOR DELETE TO authenticated
     USING (
-      (auth.uid() = employee_id AND status = 'draft') OR EXISTS (
+      (auth.uid() = employee_id AND status = 'draft' AND NOT is_shared) OR EXISTS (
         SELECT 1 FROM public.profiles p
-        WHERE p.id = auth.uid() AND p.role in ('manager', 'admin')
+        WHERE p.id = auth.uid() AND p.role = 'admin'
+      ) OR EXISTS (
+        SELECT 1 FROM public.profiles p
+        WHERE p.id = auth.uid() AND p.role = 'manager' AND NOT is_shared
       )
     );
   END IF;

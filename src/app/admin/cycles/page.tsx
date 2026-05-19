@@ -28,10 +28,11 @@ const statusConfig: Record<string, { label: string; gradient: string; icon: stri
 }
 
 const timelineData = [
-  { quarter: 'Q1', months: 'July - September', phase: 'Goal Setting', description: 'Employees set annual goals' },
-  { quarter: 'Q2', months: 'October - December', phase: 'Q1 Check-in', description: 'Progress review & updates' },
-  { quarter: 'Q3', months: 'January - February', phase: 'Mid-Year Review', description: 'Mid-cycle assessment' },
-  { quarter: 'Q4', months: 'March - April', phase: 'Final Review', description: 'Year-end evaluation' },
+  { quarter: 'Q0', months: 'May - June', phase: 'Goal Setting', description: 'Goal Creation, Submission & Approval' },
+  { quarter: 'Q1', months: 'July', phase: 'Q1 Check-in', description: 'Progress Update — Planned vs. Actual' },
+  { quarter: 'Q2', months: 'October', phase: 'Q2 Check-in', description: 'Progress Update — Planned vs. Actual' },
+  { quarter: 'Q3', months: 'January', phase: 'Q3 Check-in', description: 'Progress Update — Planned vs. Actual' },
+  { quarter: 'Q4', months: 'March - April', phase: 'Final Review', description: 'Final Achievement Capture' },
 ]
 
 function AnimatedNumber({ value, duration = 1000 }: { value: number; duration?: number }) {
@@ -63,7 +64,7 @@ function StatCard({ type, value, delay }: { type: string; value: number; delay: 
     <div
       className={`
         relative overflow-hidden rounded-2xl p-6
-        bg-gradient-to-br ${config.gradient}
+        bg-linear-to-br ${config.gradient}
         shadow-lg ${config.glow}
         transform transition-all duration-300 hover:scale-[1.02] hover:shadow-xl
         animate-fade-in-up
@@ -83,7 +84,7 @@ function StatCard({ type, value, delay }: { type: string; value: number; delay: 
         </p>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 h-1 bg-linear-to-r from-transparent via-white/30 to-transparent" />
     </div>
   )
 }
@@ -127,8 +128,8 @@ function GoalCard({ goal, employeeName, status }: { goal: Goal; employeeName: st
             )}
           </div>
         </div>
-        <div className="flex-shrink-0">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-white/20 to-white/5 flex items-center justify-center">
+        <div className="shrink-0">
+          <div className="w-10 h-10 rounded-lg bg-linear-to-br from-white/20 to-white/5 flex items-center justify-center">
             <span className="text-white font-bold text-sm">{goal.weightage}</span>
           </div>
         </div>
@@ -138,9 +139,10 @@ function GoalCard({ goal, employeeName, status }: { goal: Goal; employeeName: st
 }
 
 function TimelineItem({ item, index, isActiveYear }: { item: typeof timelineData[0]; index: number; isActiveYear: boolean }) {
-  const isPast = isActiveYear && index < 1
-  const isCurrent = isActiveYear && index === 1
-  const isUpcoming = isActiveYear && index > 1
+  const activeIndex = timelineData.length - 1 // make the last item (Q4 / Annual) active
+  const isPast = isActiveYear && index < activeIndex
+  const isCurrent = isActiveYear && index === activeIndex
+  const isUpcoming = isActiveYear && index > activeIndex
 
   const statusStyles = {
     past: 'bg-slate-500/50 text-slate-300',
@@ -153,12 +155,12 @@ function TimelineItem({ item, index, isActiveYear }: { item: typeof timelineData
       <div className={`
         relative flex items-center justify-center w-14 h-14 rounded-2xl
         transition-all duration-500 group-hover:scale-110
-        ${isCurrent ? 'bg-gradient-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/30' : 'bg-white/10'}
+        ${isCurrent ? 'bg-linear-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-500/30' : 'bg-white/10'}
       `}>
-        <div className={`absolute inset-0 rounded-2xl ${isCurrent ? 'bg-gradient-to-br from-emerald-400 to-teal-400 animate-pulse' : ''} opacity-50`} />
+        <div className={`absolute inset-0 rounded-2xl ${isCurrent ? 'bg-linear-to-br from-emerald-400 to-teal-400 animate-pulse' : ''} opacity-50`} />
         <span className="relative text-white font-bold text-lg">{item.quarter}</span>
         {isCurrent && (
-          <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 opacity-30 animate-ping" />
+          <div className="absolute -inset-1 rounded-2xl bg-linear-to-r from-emerald-500 to-teal-500 opacity-30 animate-ping" />
         )}
       </div>
 
@@ -301,7 +303,7 @@ export default function AdminCyclesPage() {
     <RoleLayout>
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 p-8 shadow-2xl">
+        <div className="relative overflow-hidden rounded-3xl bg-linear-to-r from-indigo-600 via-purple-600 to-pink-500 p-8 shadow-2xl">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-30" />
           <div className="relative z-10 flex items-center justify-between">
             <div>
@@ -348,7 +350,7 @@ export default function AdminCyclesPage() {
           {/* Goals by Status */}
           <div className="space-y-4">
             <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-              <span className="w-1 h-8 bg-gradient-to-b from-cyan-400 to-blue-500 rounded-full" />
+              <span className="w-1 h-8 bg-linear-to-b from-cyan-400 to-blue-500 rounded-full" />
               Goals by Status
             </h2>
             <div className="grid grid-cols-1 gap-4">
@@ -358,7 +360,7 @@ export default function AdminCyclesPage() {
                 return (
                   <div key={status} className="group">
                     <div className="flex items-center gap-3 mb-3">
-                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${config.gradient} flex items-center justify-center shadow-lg`}>
+                      <div className={`w-10 h-10 rounded-xl bg-linear-to-br ${config.gradient} flex items-center justify-center shadow-lg`}>
                         <span className="text-lg">{config.icon}</span>
                       </div>
                       <div className="flex-1">
@@ -367,7 +369,7 @@ export default function AdminCyclesPage() {
                       </div>
                       <div className="w-24 h-2 bg-white/10 rounded-full overflow-hidden">
                         <div
-                          className={`h-full bg-gradient-to-r ${config.gradient} rounded-full transition-all duration-1000`}
+                          className={`h-full bg-linear-to-r ${config.gradient} rounded-full transition-all duration-1000`}
                           style={{ width: `${cycleStats.total > 0 ? (statusGoals.length / cycleStats.total) * 100 : 0}%` }}
                         />
                       </div>
@@ -395,9 +397,12 @@ export default function AdminCyclesPage() {
           {/* Timeline */}
           <div className="space-y-4">
             <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-              <span className="w-1 h-8 bg-gradient-to-b from-purple-400 to-pink-500 rounded-full" />
+              <span className="w-1 h-8 bg-linear-to-b from-purple-400 to-pink-500 rounded-full" />
               Cycle Timeline
             </h2>
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">
+              Goal creation window: 1 May to 30 June.
+            </div>
             <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
               <div className="space-y-3">
                 {timelineData.map((item, index) => (
@@ -415,9 +420,9 @@ export default function AdminCyclesPage() {
             <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={handleUnlockAllGoals}
-                className="group relative overflow-hidden p-4 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-600 shadow-lg shadow-yellow-500/20 hover:shadow-yellow-500/40 transition-all duration-300 hover:scale-[1.02]"
+                className="group relative overflow-hidden p-4 rounded-xl bg-linear-to-r from-yellow-500 to-amber-600 shadow-lg shadow-yellow-500/20 hover:shadow-yellow-500/40 transition-all duration-300 hover:scale-[1.02]"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-linear-to-r from-white/0 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -433,9 +438,9 @@ export default function AdminCyclesPage() {
 
               <button
                 onClick={handleResetCycle}
-                className="group relative overflow-hidden p-4 rounded-xl bg-gradient-to-r from-rose-500 to-red-600 shadow-lg shadow-rose-500/20 hover:shadow-rose-500/40 transition-all duration-300 hover:scale-[1.02]"
+                className="group relative overflow-hidden p-4 rounded-xl bg-linear-to-r from-rose-500 to-red-600 shadow-lg shadow-rose-500/20 hover:shadow-rose-500/40 transition-all duration-300 hover:scale-[1.02]"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-linear-to-r from-white/0 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative flex items-center gap-3">
                   <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
                     <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -453,8 +458,8 @@ export default function AdminCyclesPage() {
         </div>
 
         {/* Progress Overview */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-800/80 to-slate-900/80 p-6 border border-white/10">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-cyan-500/10 to-blue-500/10 rounded-full blur-3xl" />
+        <div className="relative overflow-hidden rounded-2xl bg-linear-to-r from-slate-800/80 to-slate-900/80 p-6 border border-white/10">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-linear-to-br from-cyan-500/10 to-blue-500/10 rounded-full blur-3xl" />
           <div className="relative z-10">
             <h3 className="text-lg font-semibold text-white mb-4">Progress Overview - {selectedYear}</h3>
             <div className="flex items-center gap-6">
@@ -466,7 +471,7 @@ export default function AdminCyclesPage() {
                       <span className="text-white/60 text-sm w-24 capitalize">{statusConfig[key]?.label}</span>
                       <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
                         <div
-                          className={`h-full rounded-full transition-all duration-1000 bg-gradient-to-r ${statusConfig[key]?.gradient}`}
+                          className={`h-full rounded-full transition-all duration-1000 bg-linear-to-r ${statusConfig[key]?.gradient}`}
                           style={{ width: `${percentage}%` }}
                         />
                       </div>

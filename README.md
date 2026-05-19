@@ -74,3 +74,19 @@ Open `http://localhost:3000`.
 ## Notes
 - For real production hardening, add stricter RLS policies per manager hierarchy and server-side action auditing.
 - The schema seeds departments and thrust areas; create at least one manager and employee account to test approvals.
+
+## Recent Updates
+- Enforced shared KPI rules: employees and managers can only edit the weightage of shared KPIs; title/target are read-only.
+- Database trigger and RLS updates to prevent non-weightage mutations and deletion of shared KPIs by non-admins.
+- Added server-side notifications when admins push shared KPIs to employees.
+- When admins push a shared KPI, any employee draft with the same title is converted (updated) to the pushed shared goal to avoid duplicates.
+- Admin UI: shared KPI creation now creates locked/submitted shared goals (so they don't appear in employee Draft lists).
+- Admin UI: renamed cycle timeline entries and added Goal creation window note (1 May — 30 June).
+- Profile menu: "Sign out" label changed to "Logout"; profile details moved to a centered modal with a close button.
+- Prevent accidental deletes: typed confirmation and pre-check for pushed/approved child goals before allowing deletion.
+
+## Developed By
+Prasoon Mathur
+
+## License & Copyright
+© 2026 AlignHQ. All rights reserved.

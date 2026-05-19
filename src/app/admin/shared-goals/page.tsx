@@ -68,7 +68,8 @@ export default function AdminSharedGoalsPage() {
 
   const fetchData = useCallback(async () => {
     const [sharedRes, deptRes, goalsRes, profilesRes, thrustRes] = await Promise.all([
-      supabase.from('goals').select('*').eq('is_shared', true).eq('cycle_year', currentYear).order('created_at', { ascending: false }),
+      // fetch only primary shared goals (primary_goal_id IS NULL) so pushed copies aren't listed here
+      supabase.from('goals').select('*').eq('is_shared', true).is('primary_goal_id', null).eq('cycle_year', currentYear).order('created_at', { ascending: false }),
       supabase.from('departments').select('*').order('name'),
       supabase.from('goals').select('*').eq('cycle_year', currentYear),
       supabase.from('profiles').select('*'),
@@ -111,9 +112,9 @@ export default function AdminSharedGoalsPage() {
         uom_type: formData.uom_type,
         target_value: formData.target_value ? Number(formData.target_value) : null,
         weightage: Number(formData.weightage),
-        status: 'draft',
+        status: 'submitted',
         cycle_year: currentYear,
-        locked: false,
+        locked: true,
         is_shared: true,
         primary_goal_id: null,
       })
@@ -155,7 +156,53 @@ export default function AdminSharedGoalsPage() {
 
     setSaving(true)
     try {
+      let pushed = 0
       for (const emp of deptEmployees) {
+        // remove any employee-created draft with the same title to avoid duplicates
+        const existingDraft = goals.find(g =>
+          g.employee_id === emp.id &&
+          g.status === 'draft' &&
+          g.title === sharedGoal.title
+        )
+
+        if (existingDraft) {
+          // update the employee draft to become the pushed shared goal instead of deleting it
+          const { error: updateError } = await supabase
+            .from('goals')
+            .update({
+              weightage: sharedGoal.weightage,
+              target_value: sharedGoal.target_value,
+              target_date: sharedGoal.target_date,
+              status: 'submitted',
+              locked: true,
+              primary_goal_id: sharedGoal.id,
+              is_shared: true,
+            })
+            .eq('id', existingDraft.id)
+
+          if (updateError) {
+            console.error('Failed to update existing draft for', emp.id, updateError)
+            // continue — don't block the push for one failure
+          } else {
+            try {
+              await supabase.from('notifications').insert({
+                user_id: emp.id,
+                type: 'shared_goal_pushed',
+                payload: {
+                  message: `A shared goal "${sharedGoal.title}" was pushed to you by ${profile?.first_name} ${profile?.last_name}.`,
+                  shared_goal_id: sharedGoal.id,
+                  primary_goal_id: existingDraft.id,
+                  cycle_year: currentYear,
+                },
+              })
+            } catch (notifyErr) {
+              console.error('Failed to send notification to', emp.id, notifyErr)
+            }
+            pushed++
+            continue
+          }
+        }
+
         const existingGoal = goals.find(g =>
           g.employee_id === emp.id &&
           g.is_shared &&
@@ -163,16 +210,41 @@ export default function AdminSharedGoalsPage() {
         )
 
         if (existingGoal) {
-          await supabase
+          const { error } = await supabase
             .from('goals')
             .update({
               weightage: sharedGoal.weightage,
               target_value: sharedGoal.target_value,
               target_date: sharedGoal.target_date,
+              status: 'submitted',
+              locked: true,
+              primary_goal_id: sharedGoal.id,
             })
             .eq('id', existingGoal.id)
+
+          if (error) {
+            console.error('Failed to update existing goal for', emp.id, error)
+            throw error
+          } else {
+            // notify employee that their goal was pushed/updated by admin
+            try {
+              await supabase.from('notifications').insert({
+                user_id: emp.id,
+                type: 'shared_goal_pushed',
+                payload: {
+                  message: `A shared goal "${sharedGoal.title}" was pushed to you by ${profile?.first_name} ${profile?.last_name}.`,
+                  shared_goal_id: sharedGoal.id,
+                  primary_goal_id: existingGoal.id,
+                  cycle_year: currentYear,
+                },
+              })
+            } catch (notifyErr) {
+              console.error('Failed to send notification to', emp.id, notifyErr)
+            }
+            pushed++
+          }
         } else {
-          await supabase.from('goals').insert({
+          const { error } = await supabase.from('goals').insert({
             employee_id: emp.id,
             thrust_area_id: sharedGoal.thrust_area_id,
             title: sharedGoal.title,
@@ -187,13 +259,36 @@ export default function AdminSharedGoalsPage() {
             is_shared: true,
             primary_goal_id: sharedGoal.id,
           })
+
+          if (error) {
+            console.error('Failed to insert goal for', emp.id, error)
+            throw error
+          } else {
+            // notify employee that a new shared goal was pushed to them
+            try {
+              await supabase.from('notifications').insert({
+                user_id: emp.id,
+                type: 'shared_goal_pushed',
+                payload: {
+                  message: `A shared goal "${sharedGoal.title}" was pushed to you by ${profile?.first_name} ${profile?.last_name}.`,
+                  shared_goal_id: sharedGoal.id,
+                  primary_goal_id: null,
+                  cycle_year: currentYear,
+                },
+              })
+            } catch (notifyErr) {
+              console.error('Failed to send notification to', emp.id, notifyErr)
+            }
+            pushed++
+          }
         }
       }
 
-      setSuccess(`Pushed to ${deptEmployees.length} employees!`)
+      setSuccess(`Pushed to ${pushed} employees!`)
       await fetchData()
       setTimeout(() => setSuccess(''), 3000)
     } catch (err: unknown) {
+      console.error('Error pushing shared goals:', err)
       setError(err instanceof Error ? err.message : 'Failed to push shared goals')
     } finally {
       setSaving(false)
@@ -201,9 +296,41 @@ export default function AdminSharedGoalsPage() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this shared goal?')) return
+    // Check for pushed/shared child goals first
+    try {
+      const { data: children, error: childError } = await supabase
+        .from('goals')
+        .select('id,status,employee_id')
+        .eq('primary_goal_id', id)
+
+      if (childError) {
+        console.error('Failed to check dependent goals for', id, childError)
+        setError('Unable to verify whether this shared goal was pushed. Try again later.')
+        return
+      }
+
+      const childCount = (children || []).length
+      if (childCount > 0) {
+        // Build a helpful message for the admin explaining why deletion is blocked
+        const hasActive = (children || []).some((c: any) => c.status !== 'draft')
+        const msg = hasActive
+          ? `This shared goal cannot be deleted because it was already pushed to ${childCount} employee(s) and at least one pushed goal is not a draft (submitted/approved). Remove or convert the pushed goals before deleting the shared KPI.`
+          : `This shared goal cannot be deleted because it was pushed to ${childCount} employee(s). Remove the pushed drafts before deleting the shared KPI.`
+
+        alert(msg)
+        return
+      }
+    } catch (err: unknown) {
+      console.error('Error checking dependent goals:', err)
+      setError('Failed to verify dependent goals')
+      return
+    }
+
+    const confirmation = prompt('Type DELETE to confirm removing this shared goal. This action is irreversible.')
+    if (confirmation !== 'DELETE') return
 
     try {
+      console.log('Admin confirmed deletion of shared goal', id)
       const { error } = await supabase.from('goals').delete().eq('id', id).eq('is_shared', true)
       if (!error) {
         setSuccess('Shared goal deleted')
@@ -211,6 +338,9 @@ export default function AdminSharedGoalsPage() {
         setTimeout(() => setSuccess(''), 3000)
       }
     } catch (err: unknown) {
+      // If delete failed due to FK or other DB constraint, explain to admin
+      console.error('Failed to delete shared goal:', err)
+      alert('Unable to delete this shared goal. It may have been pushed or referenced by employee goals. Remove pushed goals first or contact the administrator.')
       setError(err instanceof Error ? err.message : 'Failed to delete')
     }
   }
@@ -267,6 +397,9 @@ export default function AdminSharedGoalsPage() {
                 return p.department_id === departmentId
               }).length
 
+              const pushedCount = goals.filter(g => g.primary_goal_id === sg.id).length
+              const pushedToAll = pushedCount >= deptEmployees
+
               return (
                 <div key={sg.id} className="bg-[#0d1a36] border border-white/10 rounded-xl p-6">
                   <div className="flex items-start justify-between mb-4">
@@ -309,10 +442,10 @@ export default function AdminSharedGoalsPage() {
 
                   <button
                     onClick={() => handlePushToEmployees(sg)}
-                    disabled={saving}
+                    disabled={saving || pushedToAll}
                     className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
                   >
-                    {saving ? 'Pushing...' : 'Push to Employees'}
+                    {pushedToAll ? `Pushed to ${pushedCount} employees` : (saving ? 'Pushing...' : 'Push to Employees')}
                   </button>
 
                   <p className="text-xs text-slate-500 mt-2 text-center">
